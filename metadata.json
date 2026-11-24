@@ -1,0 +1,6 @@
+{
+  "name": "CortaFiguras AI - Juego OpenCV y MediaPipe",
+  "description": "Juego interactivo de cortar figuras geométricas con seguimiento de manos en tiempo real (MediaPipe + OpenCV Python)",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
