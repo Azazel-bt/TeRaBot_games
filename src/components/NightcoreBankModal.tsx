@@ -86,11 +86,11 @@ export const NightcoreBankModal: React.FC<NightcoreBankModalProps> = ({ onClose 
           <div className="flex items-center gap-2">
             <Music className="w-5 h-5 text-cyan-400" />
             <h3 className="font-display text-lg sm:text-xl font-extrabold text-white">
-              Banco Musical con Voz · Pre-Escucha Antes de Aplicar
+              Banco Rock-Electrónico con Voz · Pre-Escucha Antes de Aplicar
             </h3>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            Escucha 6 pistas inspiradas en <strong>Subway Surfers</strong>, <strong>Go Go Go</strong> y <strong>Monster</strong> con voz cantada, coros (&ldquo;HEY! / GO!&rdquo;) y ritmo casual súper bailable. Nada cambia en tu juego hasta que elijas aplicarla.
+            Escucha 6 pistas de <strong>Rock Electrónico</strong> con guitarras con distorsión, batería de estadio, sintetizadores anchos y voz cantada (sin sonido de 8-bits). Nada cambia hasta que elijas aplicarla.
           </p>
         </div>
 
