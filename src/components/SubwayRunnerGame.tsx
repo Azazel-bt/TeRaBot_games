@@ -59,6 +59,7 @@ import {
   OVERDRIVE_CONFIG,
   POWER_METER_MAX,
 } from '../utils/runnerCombos';
+import { NightcoreBankModal } from './NightcoreBankModal';
 
 interface SubwayRunnerGameProps {
   onScoreUpdate: (score: number) => void;
@@ -324,6 +325,8 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
   });
   const [showCraftMenu, setShowCraftMenu] = useState<boolean>(false);
   const pausedForCraftMenuRef = useRef<boolean>(false);
+  const [showMusicBank, setShowMusicBank] = useState<boolean>(false);
+  const pausedForMusicBankRef = useRef<boolean>(false);
 
   // CV Pose Camera State
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
@@ -3706,6 +3709,23 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
           </button>
 
           <button
+            onClick={() => {
+              if (gameStateRef.current === 'PLAYING') {
+                pausedForMusicBankRef.current = true;
+                togglePause();
+              } else {
+                pausedForMusicBankRef.current = false;
+              }
+              setShowMusicBank(true);
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/40 hover:bg-fuchsia-500/25 transition whitespace-nowrap shrink-0"
+            title="Escucha el banco de canciones con voz y ritmo casual antes de aplicarlo"
+          >
+            <Music className="w-4 h-4" />
+            <span>Banco Musical</span>
+          </button>
+
+          <button
             onClick={() => (isCameraActive ? stopPoseCamera() : startPoseCamera())}
             disabled={cameraLoading}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold border transition whitespace-nowrap shrink-0 ${
@@ -4155,6 +4175,17 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
               </button>
 
               <button
+                onClick={() => {
+                  pausedForMusicBankRef.current = false;
+                  setShowMusicBank(true);
+                }}
+                className="flex items-center gap-2 px-5 py-3 rounded-xl bg-fuchsia-500/15 hover:bg-fuchsia-500/25 border border-fuchsia-500/40 text-sm font-semibold text-fuchsia-300 transition whitespace-nowrap"
+              >
+                <Music className="w-4 h-4" />
+                <span>Pre-escuchar Canciones</span>
+              </button>
+
+              <button
                 id="btn-start-runner"
                 onClick={startGame}
                 className="flex items-center gap-2.5 px-8 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-amber-500 text-slate-950 font-bold text-sm shadow-lg shadow-cyan-500/25 hover:brightness-110 transition active:scale-95 whitespace-nowrap"
@@ -4431,6 +4462,18 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
             </div>
           </div>
         )}
+        {/* NIGHTCORE SONG BANK AUDITION MODAL ("Pre-escucha antes de implementar") */}
+        {showMusicBank && (
+          <NightcoreBankModal
+            onClose={() => {
+              setShowMusicBank(false);
+              if (pausedForMusicBankRef.current && gameStateRef.current === 'PAUSED') {
+                pausedForMusicBankRef.current = false;
+                togglePause();
+              }
+            }}
+          />
+        )}
       </div>
 
       {/* Bottom Runner Control Bar */}
@@ -4468,6 +4511,22 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
           >
             {musicEnabled && soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
             <span>Música {musicEnabled && soundEnabled ? 'Activa' : 'Silenciada'}</span>
+          </button>
+
+          <button
+            onClick={() => {
+              if (gameStateRef.current === 'PLAYING') {
+                pausedForMusicBankRef.current = true;
+                togglePause();
+              } else {
+                pausedForMusicBankRef.current = false;
+              }
+              setShowMusicBank(true);
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl font-semibold bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/35 hover:bg-fuchsia-500/25 transition"
+          >
+            <Music className="w-4 h-4" />
+            <span>Pre-escuchar Banco</span>
           </button>
 
           <button
