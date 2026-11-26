@@ -28,6 +28,16 @@ type BoothMode = 'portals' | 'puzzle';
 type PuzzleSourceMode = 'live' | 'photo';
 
 type PortalFilterId =
+  | 'dr_strange_mandala'
+  | 'mirror_dimension'
+  | 'time_stone'
+  | 'starwars_hologram'
+  | 'scarlet_chaos'
+  | 'patronus_charm'
+  | 'wakanda_vibranium'
+  | 'spider_verse'
+  | 'cyber_blade'
+  | 'upside_down'
   | 'fisheye'
   | 'y2k_ccd'
   | 'halation'
@@ -92,6 +102,7 @@ interface TileSlideAnim {
 
 interface PortalShape {
   kind: 'circle' | 'quad';
+  handId: number;
   cx: number;
   cy: number;
   radius: number;
@@ -110,6 +121,16 @@ const PORTAL_FILTERS: Array<{
   name: string;
   accent: string;
 }> = [
+  { id: 'dr_strange_mandala', name: 'Magia Dr. Strange', accent: '#fb923c' },
+  { id: 'mirror_dimension', name: 'Dimensión Espejo', accent: '#38bdf8' },
+  { id: 'time_stone', name: 'Ojo de Agamotto', accent: '#22c55e' },
+  { id: 'starwars_hologram', name: 'Holograma Galáctico', accent: '#22d3ee' },
+  { id: 'scarlet_chaos', name: 'Magia Escarlata', accent: '#ef4444' },
+  { id: 'patronus_charm', name: 'Escudo Patronus', accent: '#bae6fd' },
+  { id: 'wakanda_vibranium', name: 'Pulso Vibranium', accent: '#c084fc' },
+  { id: 'spider_verse', name: 'Cómic Multiverso', accent: '#e879f9' },
+  { id: 'cyber_blade', name: 'Neon Blade Runner', accent: '#f43f5e' },
+  { id: 'upside_down', name: 'Mundo del Revés', accent: '#dc2626' },
   { id: 'fisheye', name: 'Ojo de Pez 8mm', accent: '#38bdf8' },
   { id: 'y2k_ccd', name: 'Cámara Y2K 2003', accent: '#f59e0b' },
   { id: 'halation', name: 'Cine Halation 35mm', accent: '#fb7185' },
@@ -271,9 +292,10 @@ function findNearestAdjacentCell(x: number, y: number, size: number, emptyIdx: n
   return bestIdx;
 }
 
-function pickNextRandomFilter(current: PortalFilterId): PortalFilterId {
-  const pool = PORTAL_FILTERS.filter((f) => f.id !== current);
-  return pool[Math.floor(Math.random() * pool.length)]?.id || 'prism';
+function pickNextRandomFilter(current: PortalFilterId, excluded: Set<PortalFilterId> = new Set()): PortalFilterId {
+  const uniquePool = PORTAL_FILTERS.filter((f) => f.id !== current && !excluded.has(f.id));
+  const pool = uniquePool.length > 0 ? uniquePool : PORTAL_FILTERS.filter((f) => f.id !== current);
+  return pool[Math.floor(Math.random() * pool.length)]?.id || 'dr_strange_mandala';
 }
 
 export const PhotoBoothCV: React.FC<PhotoBoothCVProps> = ({ soundEnabled }) => {
@@ -291,7 +313,7 @@ export const PhotoBoothCV: React.FC<PhotoBoothCVProps> = ({ soundEnabled }) => {
 
   // Simple Mode: Portales (Gesture Filters) vs Sliding Puzzle on Live Camera
   const [boothMode, setBoothMode] = useState<BoothMode>('portals');
-  const [activeFilter, setActiveFilter] = useState<PortalFilterId>('fisheye');
+  const [activeFilter, setActiveFilter] = useState<PortalFilterId>('dr_strange_mandala');
   const [autoRandomFilter, setAutoRandomFilter] = useState<boolean>(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [peaceDetected, setPeaceDetected] = useState<boolean>(false);
@@ -330,6 +352,7 @@ export const PhotoBoothCV: React.FC<PhotoBoothCVProps> = ({ soundEnabled }) => {
   const nextHandIdRef = useRef<number>(1);
   const handPuzzleStatesRef = useRef<Map<number, HandPuzzleState>>(new Map());
   const handCloseOpenStateRef = useRef<Map<number, { wasClosed: boolean; closedAt: number }>>(new Map());
+  const handFiltersRef = useRef<Map<number, PortalFilterId>>(new Map());
   const filterSwapCooldownRef = useRef<number>(0);
   const filterToastTimerRef = useRef<number | null>(null);
   const peaceHoldStartRef = useRef<number | null>(null);
@@ -629,6 +652,7 @@ export const PhotoBoothCV: React.FC<PhotoBoothCVProps> = ({ soundEnabled }) => {
     trackedHandsRef.current = [];
     handPuzzleStatesRef.current.clear();
     handCloseOpenStateRef.current.clear();
+    handFiltersRef.current.clear();
   }, []);
 
   const startCamera = useCallback(async () => {
@@ -646,7 +670,7 @@ export const PhotoBoothCV: React.FC<PhotoBoothCVProps> = ({ soundEnabled }) => {
       }
 
       const hands = new HandsCtor({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+        locateFile: (file) => `/mediapipe/hands/${file}`,
       });
       hands.setOptions({
         maxNumHands: 6,
@@ -778,10 +802,39 @@ export const PhotoBoothCV: React.FC<PhotoBoothCVProps> = ({ soundEnabled }) => {
             handCloseOpenStateRef.current.delete(id);
           }
         });
+        handFiltersRef.current.forEach((_, id) => {
+          if (!activeIds.has(id)) {
+            handFiltersRef.current.delete(id);
+          }
+        });
+
+        // Guarantee every detected hand has its own unique filter (different from other active hands!)
+        if (nextTracked.length > 0) {
+          const usedFilters = new Set<PortalFilterId>();
+          nextTracked.forEach((hand, hIdx) => {
+            let assigned = handFiltersRef.current.get(hand.id);
+            if (!assigned) {
+              if (hIdx === 0 && !usedFilters.has(activeFilterRef.current)) {
+                assigned = activeFilterRef.current;
+              } else {
+                const candidate = PORTAL_FILTERS.find((f) => !usedFilters.has(f.id));
+                assigned = candidate ? candidate.id : PORTAL_FILTERS[hIdx % PORTAL_FILTERS.length].id;
+              }
+              handFiltersRef.current.set(hand.id, assigned);
+            } else if (usedFilters.has(assigned)) {
+              const uniquePick = PORTAL_FILTERS.find((f) => !usedFilters.has(f.id));
+              if (uniquePick) {
+                assigned = uniquePick.id;
+                handFiltersRef.current.set(hand.id, assigned);
+              }
+            }
+            usedFilters.add(assigned);
+          });
+        }
 
         // PORTALS MODE GESTURES:
         // 1) V-Sign (Index + Corazón raised in V) from ANY person -> triggers 3s photo countdown -> auto-opens Slider!
-        // 2) Close Thumb+Index fingers & Re-open -> swaps automatically to a Random Filter!
+        // 2) Close Thumb+Index fingers & Re-open -> swaps THAT hand automatically to a Random Filter!
         if (boothModeRef.current === 'portals') {
           const anyPeace = nextTracked.some((th) => th.isPeaceSign);
           setPeaceDetected(anyPeace);
@@ -798,9 +851,9 @@ export const PhotoBoothCV: React.FC<PhotoBoothCVProps> = ({ soundEnabled }) => {
             peaceHoldStartRef.current = null;
           }
 
-          // Close-then-Open Thumb+Index finger gesture switches to a Random Filter
+          // Close-then-Open Thumb+Index finger gesture switches THAT hand to a unique Random Filter
           if (!countdownActiveRef.current) {
-            nextTracked.forEach((hand) => {
+            nextTracked.forEach((hand, hIdx) => {
               const pinchDist = Math.hypot(hand.indexTip.x - hand.thumbTip.x, hand.indexTip.y - hand.thumbTip.y);
               const pinchRatio = pinchDist / hand.handScale;
               let co = handCloseOpenStateRef.current.get(hand.id);
@@ -819,19 +872,32 @@ export const PhotoBoothCV: React.FC<PhotoBoothCVProps> = ({ soundEnabled }) => {
                 now >= filterSwapCooldownRef.current
               ) {
                 co.wasClosed = false;
-                filterSwapCooldownRef.current = now + 480;
-                const nextId = pickNextRandomFilter(activeFilterRef.current);
-                activeFilterRef.current = nextId;
-                setActiveFilter(nextId);
+                filterSwapCooldownRef.current = now + 420;
+                const otherFilters = new Set<PortalFilterId>();
+                nextTracked.forEach((other) => {
+                  if (other.id !== hand.id) {
+                    const f = handFiltersRef.current.get(other.id);
+                    if (f) otherFilters.add(f);
+                  }
+                });
+                const currentHandFilter = handFiltersRef.current.get(hand.id) || activeFilterRef.current;
+                const nextId = pickNextRandomFilter(currentHandFilter, otherFilters);
+                handFiltersRef.current.set(hand.id, nextId);
+                if (hIdx === 0 || nextTracked.length === 1) {
+                  activeFilterRef.current = nextId;
+                  setActiveFilter(nextId);
+                }
                 const nextMeta = PORTAL_FILTERS.find((f) => f.id === nextId);
                 if (nextMeta) {
-                  setFilterToast(nextMeta.name);
+                  setFilterToast(
+                    nextTracked.length > 1 ? `Mano ${hIdx + 1}: ${nextMeta.name}` : nextMeta.name
+                  );
                   if (filterToastTimerRef.current) {
                     window.clearTimeout(filterToastTimerRef.current);
                   }
                   filterToastTimerRef.current = window.setTimeout(() => {
                     setFilterToast(null);
-                  }, 1400);
+                  }, 1500);
                 }
                 playBoothTone(720, 0.08, soundEnabledRef.current, 'sine');
               }
@@ -1046,57 +1112,20 @@ export const PhotoBoothCV: React.FC<PhotoBoothCVProps> = ({ soundEnabled }) => {
   useEffect(() => {
     let rafId = 0;
 
-    // Build Optical Portals STRICTLY from Thumb Tip (4) and Index Tip (8)
+    // Build Independent Optical Portal PER HAND so multiple hands each show their own distinct filter!
     const buildThumbIndexPortals = (hands: ThumbIndexHand[]): PortalShape[] => {
       const sorted = [...hands].sort((a, b) => a.pinchCenter.x - b.pinchCenter.x);
-      const paired = new Set<number>();
-      const shapes: PortalShape[] = [];
-
-      for (let i = 0; i < sorted.length; i++) {
-        if (paired.has(sorted[i].id)) continue;
-        let partnerIdx = -1;
-        let bestDist = 420;
-        for (let j = i + 1; j < sorted.length; j++) {
-          if (paired.has(sorted[j].id)) continue;
-          const d = Math.hypot(
-            sorted[i].pinchCenter.x - sorted[j].pinchCenter.x,
-            sorted[i].pinchCenter.y - sorted[j].pinchCenter.y
-          );
-          if (d < bestDist) {
-            bestDist = d;
-            partnerIdx = j;
-          }
-        }
-
-        if (partnerIdx !== -1) {
-          paired.add(sorted[i].id);
-          paired.add(sorted[partnerIdx].id);
-          const h1 = sorted[i];
-          const h2 = sorted[partnerIdx];
-          const pts = [h1.thumbTip, h1.indexTip, h2.indexTip, h2.thumbTip];
-          const cx = pts.reduce((s, p) => s + p.x, 0) / 4;
-          const cy = pts.reduce((s, p) => s + p.y, 0) / 4;
-          shapes.push({
-            kind: 'quad',
-            cx,
-            cy,
-            radius: bestDist * 0.5,
-            points: pts,
-          });
-        } else {
-          paired.add(sorted[i].id);
-          const h1 = sorted[i];
-          const span = Math.hypot(h1.indexTip.x - h1.thumbTip.x, h1.indexTip.y - h1.thumbTip.y);
-          shapes.push({
-            kind: 'circle',
-            cx: h1.pinchCenter.x,
-            cy: h1.pinchCenter.y,
-            radius: Math.max(32, span * 0.68),
-            points: [h1.thumbTip, h1.indexTip],
-          });
-        }
-      }
-      return shapes;
+      return sorted.map((h1) => {
+        const span = Math.hypot(h1.indexTip.x - h1.thumbTip.x, h1.indexTip.y - h1.thumbTip.y);
+        return {
+          kind: 'circle',
+          handId: h1.id,
+          cx: h1.pinchCenter.x,
+          cy: h1.pinchCenter.y,
+          radius: Math.max(48, span * 0.85, h1.handScale * 1.05),
+          points: [h1.thumbTip, h1.indexTip],
+        };
+      });
     };
 
     const drawPortalEffect = (
@@ -1145,7 +1174,257 @@ export const PhotoBoothCV: React.FC<PhotoBoothCVProps> = ({ soundEnabled }) => {
       traceShape();
       ctx.clip();
 
-      if (filterId === 'fisheye') {
+      if (filterId === 'dr_strange_mandala') {
+        // Doctor Strange Eldritch Sling-Ring Mandala + Warm Amber Reality Portal
+        const maxR = Math.max(boxW, boxH) * 0.52;
+        if (hasVideo && videoRef.current) {
+          ctx.save();
+          ctx.filter = 'contrast(1.25) saturate(1.55) sepia(0.28) brightness(1.08)';
+          ctx.translate(cx, cy);
+          ctx.scale(1.12 + Math.sin(now * 0.004) * 0.04, 1.12 + Math.sin(now * 0.004) * 0.04);
+          ctx.translate(-cx, -cy);
+          ctx.translate(w, 0);
+          ctx.scale(-1, 1);
+          ctx.drawImage(videoRef.current, 0, 0, w, h);
+          ctx.restore();
+        }
+        const mysticGrad = ctx.createRadialGradient(cx, cy, maxR * 0.2, cx, cy, maxR);
+        mysticGrad.addColorStop(0, 'rgba(251, 146, 60, 0.05)');
+        mysticGrad.addColorStop(0.75, 'rgba(249, 115, 22, 0.24)');
+        mysticGrad.addColorStop(1, 'rgba(250, 204, 21, 0.48)');
+        ctx.fillStyle = mysticGrad;
+        ctx.fillRect(minX, minY, boxW, boxH);
+      } else if (filterId === 'mirror_dimension') {
+        // Doctor Strange Mirror Dimension: 6 Rotating Crystalline Triangular Shards
+        const maxR = Math.max(boxW, boxH) * 0.65;
+        if (hasVideo && videoRef.current) {
+          for (let sIdx = 0; sIdx < 6; sIdx++) {
+            const a0 = (sIdx * Math.PI) / 3 + now * 0.00045;
+            const a1 = a0 + Math.PI / 3;
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + Math.cos(a0) * maxR, cy + Math.sin(a0) * maxR);
+            ctx.lineTo(cx + Math.cos(a1) * maxR, cy + Math.sin(a1) * maxR);
+            ctx.closePath();
+            ctx.clip();
+
+            ctx.filter = sIdx % 2 === 0 ? 'contrast(1.28) saturate(1.45)' : 'contrast(1.35) hue-rotate(25deg) brightness(1.08)';
+            ctx.translate(cx, cy);
+            ctx.rotate((sIdx % 2 === 0 ? 1 : -1) * 0.14 * Math.sin(now * 0.0018 + sIdx));
+            ctx.scale(sIdx % 2 === 0 ? 1.16 : -1.16, 1.16);
+            ctx.translate(-cx, -cy);
+            ctx.translate(w, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(videoRef.current, 0, 0, w, h);
+            ctx.restore();
+
+            ctx.strokeStyle = 'rgba(186, 230, 253, 0.65)';
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + Math.cos(a0) * maxR, cy + Math.sin(a0) * maxR);
+            ctx.stroke();
+          }
+        }
+      } else if (filterId === 'time_stone') {
+        // Eye of Agamotto / Time Stone Animated Emerald Chronos Portal
+        const maxR = Math.max(boxW, boxH) * 0.52;
+        if (hasVideo && videoRef.current) {
+          ctx.save();
+          ctx.filter = 'contrast(1.3) saturate(2.2) hue-rotate(88deg) brightness(1.06)';
+          ctx.translate(cx, cy);
+          ctx.rotate(Math.sin(now * 0.002) * 0.08);
+          ctx.scale(1.15, 1.15);
+          ctx.translate(-cx, -cy);
+          ctx.translate(w, 0);
+          ctx.scale(-1, 1);
+          ctx.drawImage(videoRef.current, 0, 0, w, h);
+          ctx.restore();
+        }
+        const timeGrad = ctx.createRadialGradient(cx, cy, 4, cx, cy, maxR);
+        timeGrad.addColorStop(0, 'rgba(74, 222, 128, 0.12)');
+        timeGrad.addColorStop(0.75, 'rgba(34, 197, 94, 0.25)');
+        timeGrad.addColorStop(1, 'rgba(16, 185, 129, 0.5)');
+        ctx.fillStyle = timeGrad;
+        ctx.fillRect(minX, minY, boxW, boxH);
+      } else if (filterId === 'starwars_hologram') {
+        // Star Wars Galactic Hologram Projector (Flickering Cyan Scanlines & Beam)
+        const flicker = Math.sin(now * 0.045) > 0.85 ? 0.68 : 0.94;
+        const jx = Math.sin(now * 0.06) > 0.88 ? 6 : 0;
+        if (hasVideo && videoRef.current) {
+          ctx.save();
+          ctx.globalAlpha = flicker;
+          ctx.filter = 'grayscale(0.8) sepia(1) hue-rotate(155deg) saturate(3.6) contrast(1.45) brightness(1.15)';
+          ctx.translate(w + jx, 0);
+          ctx.scale(-1, 1);
+          ctx.drawImage(videoRef.current, 0, 0, w, h);
+          ctx.restore();
+        }
+        ctx.fillStyle = 'rgba(8, 145, 178, 0.24)';
+        ctx.fillRect(minX, minY, boxW, boxH);
+        ctx.fillStyle = 'rgba(103, 232, 249, 0.35)';
+        for (let sy = Math.floor(minY); sy < maxY; sy += 4) {
+          ctx.fillRect(minX, sy, boxW, 1.5);
+        }
+        const beamY = minY + ((now * 0.19) % Math.max(20, boxH));
+        ctx.fillStyle = 'rgba(224, 242, 254, 0.55)';
+        ctx.fillRect(minX, beamY, boxW, 4);
+      } else if (filterId === 'scarlet_chaos') {
+        // Scarlet Witch Crimson Hex Energy Ripples
+        const maxR = Math.max(boxW, boxH) * 0.54;
+        if (hasVideo && videoRef.current) {
+          ctx.save();
+          ctx.filter = 'contrast(1.38) saturate(2.4) hue-rotate(-32deg) brightness(0.98)';
+          ctx.translate(cx, cy);
+          ctx.scale(1.16, 1.16);
+          ctx.translate(-cx, -cy);
+          ctx.translate(w, 0);
+          ctx.scale(-1, 1);
+          ctx.drawImage(videoRef.current, 0, 0, w, h);
+          ctx.restore();
+        }
+        const hexGrad = ctx.createRadialGradient(cx, cy, 4, cx, cy, maxR);
+        hexGrad.addColorStop(0, 'rgba(239, 68, 68, 0.08)');
+        hexGrad.addColorStop(0.68, 'rgba(220, 38, 38, 0.26)');
+        hexGrad.addColorStop(1, 'rgba(153, 27, 27, 0.55)');
+        ctx.fillStyle = hexGrad;
+        ctx.fillRect(minX, minY, boxW, boxH);
+        for (let wave = 0; wave < 3; wave++) {
+          const prog = ((now * 0.0009 + wave / 3) % 1);
+          ctx.strokeStyle = `rgba(248, 113, 113, ${(1 - prog) * 0.75})`;
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(cx, cy, Math.max(6, maxR * prog), 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      } else if (filterId === 'patronus_charm') {
+        // Enchanted Silver-Blue Patronus Mist & Spirit Particles
+        if (hasVideo && videoRef.current) {
+          ctx.save();
+          ctx.filter = 'contrast(1.22) saturate(0.65) brightness(1.18) hue-rotate(175deg)';
+          ctx.translate(w, 0);
+          ctx.scale(-1, 1);
+          ctx.drawImage(videoRef.current, 0, 0, w, h);
+          ctx.restore();
+
+          ctx.save();
+          ctx.globalAlpha = 0.42;
+          ctx.globalCompositeOperation = 'screen';
+          ctx.filter = 'blur(5px) brightness(1.35) saturate(1.4)';
+          ctx.translate(w, 0);
+          ctx.scale(-1, 1);
+          ctx.drawImage(videoRef.current, 0, 0, w, h);
+          ctx.restore();
+        }
+        for (let p = 0; p < 12; p++) {
+          const ang = now * 0.0022 + p * ((Math.PI * 2) / 12);
+          const rad = Math.min(boxW, boxH) * (0.18 + 0.24 * Math.sin(now * 0.003 + p));
+          const px = cx + Math.cos(ang) * rad;
+          const py = cy + Math.sin(ang) * rad;
+          ctx.fillStyle = 'rgba(224, 242, 254, 0.85)';
+          ctx.beginPath();
+          ctx.arc(px, py, 2.6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (filterId === 'wakanda_vibranium') {
+        // Kinetic Purple Vibranium Hex Shield Pulse
+        const maxR = Math.max(boxW, boxH) * 0.54;
+        if (hasVideo && videoRef.current) {
+          ctx.save();
+          ctx.filter = 'contrast(1.32) saturate(2.1) hue-rotate(248deg) brightness(1.04)';
+          ctx.translate(w, 0);
+          ctx.scale(-1, 1);
+          ctx.drawImage(videoRef.current, 0, 0, w, h);
+          ctx.restore();
+        }
+        ctx.fillStyle = 'rgba(139, 92, 246, 0.22)';
+        ctx.fillRect(minX, minY, boxW, boxH);
+        const pulseR = ((now * 0.06) % maxR);
+        ctx.strokeStyle = 'rgba(216, 180, 254, 0.72)';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        for (let k = 0; k < 6; k++) {
+          const a = (k * Math.PI) / 3 + now * 0.0012;
+          const hx = cx + Math.cos(a) * pulseR;
+          const hy = cy + Math.sin(a) * pulseR;
+          if (k === 0) ctx.moveTo(hx, hy);
+          else ctx.lineTo(hx, hy);
+        }
+        ctx.closePath();
+        ctx.stroke();
+      } else if (filterId === 'spider_verse') {
+        // Spider-Verse Comic Multiverse Split + Ben-Day Halftone + Electric Arcs
+        if (hasVideo && videoRef.current) {
+          ctx.save();
+          ctx.filter = 'contrast(1.85) saturate(2.5) brightness(1.06)';
+          ctx.translate(w, 0);
+          ctx.scale(-1, 1);
+          ctx.drawImage(videoRef.current, 0, 0, w, h);
+          ctx.restore();
+
+          ctx.save();
+          ctx.globalAlpha = 0.3;
+          ctx.globalCompositeOperation = 'screen';
+          ctx.filter = 'hue-rotate(155deg) saturate(3.0)';
+          ctx.translate(w + 7, 0);
+          ctx.scale(-1, 1);
+          ctx.drawImage(videoRef.current, 0, 0, w, h);
+          ctx.restore();
+        }
+        ctx.fillStyle = 'rgba(232, 121, 249, 0.22)';
+        for (let gy = Math.floor(minY); gy < maxY; gy += 14) {
+          for (let gx = Math.floor(minX); gx < maxX; gx += 14) {
+            ctx.beginPath();
+            ctx.arc(gx, gy, 2.2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      } else if (filterId === 'cyber_blade') {
+        // Blade Runner Neo-Noir Rain + Cyan/Magenta Neon Grade
+        if (hasVideo && videoRef.current) {
+          ctx.save();
+          ctx.filter = 'contrast(1.42) saturate(2.1) hue-rotate(-14deg) brightness(0.95)';
+          ctx.translate(w, 0);
+          ctx.scale(-1, 1);
+          ctx.drawImage(videoRef.current, 0, 0, w, h);
+          ctx.restore();
+        }
+        const neoGrad = ctx.createLinearGradient(minX, minY, maxX, maxY);
+        neoGrad.addColorStop(0, 'rgba(6, 182, 212, 0.26)');
+        neoGrad.addColorStop(1, 'rgba(244, 63, 94, 0.26)');
+        ctx.fillStyle = neoGrad;
+        ctx.fillRect(minX, minY, boxW, boxH);
+        ctx.strokeStyle = 'rgba(186, 230, 253, 0.55)';
+        ctx.lineWidth = 1.2;
+        for (let rx = Math.floor(minX); rx < maxX; rx += 18) {
+          const ry = minY + ((now * 0.26 + rx * 11) % Math.max(30, boxH));
+          ctx.beginPath();
+          ctx.moveTo(rx, ry);
+          ctx.lineTo(rx - 5, ry + 14);
+          ctx.stroke();
+        }
+      } else if (filterId === 'upside_down') {
+        // Upside Down Dark Cobalt-Crimson Spores & Lightning
+        if (hasVideo && videoRef.current) {
+          ctx.save();
+          ctx.filter = 'contrast(1.45) brightness(0.84) saturate(1.4) hue-rotate(205deg)';
+          ctx.translate(w, 0);
+          ctx.scale(-1, 1);
+          ctx.drawImage(videoRef.current, 0, 0, w, h);
+          ctx.restore();
+        }
+        ctx.fillStyle = Math.sin(now * 0.017) > 0.92 ? 'rgba(220, 38, 38, 0.28)' : 'rgba(15, 23, 42, 0.34)';
+        ctx.fillRect(minX, minY, boxW, boxH);
+        for (let sp = 0; sp < 14; sp++) {
+          const sx = minX + ((sp * 37 + Math.sin(now * 0.001 + sp) * 20) % Math.max(20, boxW));
+          const sy = maxY - ((now * 0.05 + sp * 29) % Math.max(20, boxH));
+          ctx.fillStyle = 'rgba(248, 113, 113, 0.72)';
+          ctx.beginPath();
+          ctx.arc(sx, sy, 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (filterId === 'fisheye') {
         // Real-time 8mm Fisheye Barrel Bulge using concentric GPU-clipped magnification rings
         const maxR = Math.max(boxW, boxH) * 0.62;
         if (hasVideo && videoRef.current) {
@@ -1551,14 +1830,65 @@ export const PhotoBoothCV: React.FC<PhotoBoothCVProps> = ({ soundEnabled }) => {
       ctx.restore();
 
       const filterMeta = PORTAL_FILTERS.find((f) => f.id === filterId);
-      const strokeColor = filterMeta?.accent || '#c084fc';
+      const strokeColor = filterMeta?.accent || '#22d3ee';
       ctx.save();
-      ctx.strokeStyle = strokeColor;
-      ctx.shadowBlur = 18;
-      ctx.shadowColor = strokeColor;
-      ctx.lineWidth = 3;
-      traceShape();
-      ctx.stroke();
+
+      // Animated Outer Sacred Mandala Rings for Dr. Strange & Time Stone Filters
+      if (filterId === 'dr_strange_mandala' || filterId === 'time_stone') {
+        const ringR = shape.radius * 1.02;
+        const glowCol = filterId === 'dr_strange_mandala' ? '#fb923c' : '#22c55e';
+        const innerCol = filterId === 'dr_strange_mandala' ? '#fde047' : '#86efac';
+        ctx.shadowBlur = 22;
+        ctx.shadowColor = glowCol;
+
+        // Outer spinning dashed glyph ring
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(now * 0.0014);
+        ctx.strokeStyle = glowCol;
+        ctx.lineWidth = 2.6;
+        ctx.setLineDash([10, 6]);
+        ctx.beginPath();
+        ctx.arc(0, 0, ringR, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Twin rotated mystic squares forming an 8-point Eldritch Star
+        ctx.setLineDash([]);
+        ctx.strokeStyle = innerCol;
+        ctx.lineWidth = 1.8;
+        const sqHalf = ringR * 0.68;
+        ctx.strokeRect(-sqHalf, -sqHalf, sqHalf * 2, sqHalf * 2);
+        ctx.rotate(Math.PI / 4);
+        ctx.strokeRect(-sqHalf, -sqHalf, sqHalf * 2, sqHalf * 2);
+        ctx.restore();
+
+        // Counter-rotating inner ring + orbiting mystic sparks
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(-now * 0.0022);
+        ctx.strokeStyle = glowCol;
+        ctx.lineWidth = 1.8;
+        ctx.setLineDash([4, 8]);
+        ctx.beginPath();
+        ctx.arc(0, 0, ringR * 0.78, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        for (let sp = 0; sp < 8; sp++) {
+          const sa = (sp * Math.PI) / 4;
+          ctx.fillStyle = innerCol;
+          ctx.beginPath();
+          ctx.arc(Math.cos(sa) * ringR, Math.sin(sa) * ringR, 3.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      } else {
+        ctx.strokeStyle = strokeColor;
+        ctx.shadowBlur = 18;
+        ctx.shadowColor = strokeColor;
+        ctx.lineWidth = 3;
+        traceShape();
+        ctx.stroke();
+      }
 
       // Anchor nodes strictly on Thumb + Index tips
       shape.points.forEach((p) => {
@@ -1873,15 +2203,38 @@ export const PhotoBoothCV: React.FC<PhotoBoothCVProps> = ({ soundEnabled }) => {
       if (boothModeRef.current === 'puzzle') {
         drawLivePuzzleBoard(ctx, hands, hasVideo, now);
       } else if (hands.length > 0) {
-        const baseIdx = PORTAL_FILTERS.findIndex((f) => f.id === activeFilterRef.current);
         const portals = buildThumbIndexPortals(hands);
         portals.forEach((shape, pIdx) => {
-          // When multiple portals exist and Random Auto is on, give each portal a varied optical filter!
-          const filterObj =
-            autoRandomFilterRef.current && portals.length > 1
-              ? PORTAL_FILTERS[(Math.max(0, baseIdx) + pIdx * 2) % PORTAL_FILTERS.length]
-              : PORTAL_FILTERS[Math.max(0, baseIdx)];
-          drawPortalEffect(ctx, shape, filterObj.id, w, h, now);
+          const handFilterId =
+            portals.length === 1
+              ? activeFilterRef.current
+              : handFiltersRef.current.get(shape.handId) ||
+                PORTAL_FILTERS[pIdx % PORTAL_FILTERS.length].id;
+          drawPortalEffect(ctx, shape, handFilterId, w, h, now);
+
+          if (portals.length > 1) {
+            const meta = PORTAL_FILTERS.find((f) => f.id === handFilterId);
+            if (meta) {
+              const label = `M${pIdx + 1}: ${meta.name}`;
+              ctx.save();
+              ctx.font = 'bold 11px sans-serif';
+              const tw = ctx.measureText(label).width + 14;
+              const lx = Math.max(8, Math.min(w - tw - 8, shape.cx - tw * 0.5));
+              const ly = Math.max(44, shape.cy - shape.radius - 26);
+              ctx.fillStyle = 'rgba(2, 6, 23, 0.85)';
+              ctx.beginPath();
+              ctx.roundRect(lx, ly, tw, 20, 6);
+              ctx.fill();
+              ctx.strokeStyle = meta.accent;
+              ctx.lineWidth = 1.2;
+              ctx.stroke();
+              ctx.fillStyle = meta.accent;
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(label, lx + tw * 0.5, ly + 10.5);
+              ctx.restore();
+            }
+          }
         });
       }
     };
@@ -2233,6 +2586,10 @@ export const PhotoBoothCV: React.FC<PhotoBoothCVProps> = ({ soundEnabled }) => {
                   key={f.id}
                   onClick={() => {
                     setActiveFilter(f.id);
+                    activeFilterRef.current = f.id;
+                    if (trackedHandsRef.current.length > 0) {
+                      handFiltersRef.current.set(trackedHandsRef.current[0].id, f.id);
+                    }
                     setAutoRandomFilter(false);
                   }}
                   className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition whitespace-nowrap shrink-0 ${

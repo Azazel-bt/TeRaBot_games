@@ -215,7 +215,7 @@ export function generatePythonScript(config: {
   const duration = config.matchDuration || 60;
 
   return `# =====================================================================
-# CortaFiguras AI - Juego Interactivo con 2 Manos y Visión Artificial
+# EraBotGames · CortaFiguras - Juego Interactivo con 2 Manos y Visión Artificial
 # Desarrollado con OpenCV, MediaPipe Hands y Numpy
 # =====================================================================
 # Instrucciones de instalación:
@@ -360,7 +360,7 @@ class Shape:
         return dist < self.radius
 
 def main():
-    window_name = "CortaFiguras AI - Python Dual Hands"
+    window_name = "EraBotGames - CortaFiguras Dual Hands"
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
     
     cap = cv2.VideoCapture(0)
@@ -378,7 +378,7 @@ def main():
     last_spawn_time = time.time()
     is_fullscreen = False
     
-    print("=== CortaFiguras AI Iniciado (2 Manos Simultáneas) ===")
+    print("=== EraBotGames · CortaFiguras Iniciado (2 Manos Simultáneas) ===")
     print("Mueve ambas manos frente a la cámara para dibujar cuerdas y cortar figuras.")
     print("Presiona 'f' para Pantalla Completa | 'r' para reiniciar | 'q' o ESC para salir.")
     

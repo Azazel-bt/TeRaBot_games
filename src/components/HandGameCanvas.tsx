@@ -844,7 +844,7 @@ export const HandGameCanvas: React.FC<HandGameCanvasProps> = ({
 
     try {
       const hands = new Hands({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+        locateFile: (file) => `/mediapipe/hands/${file}`,
       });
 
       // Dual Hand Tracking Setup:
@@ -1283,7 +1283,7 @@ export const HandGameCanvas: React.FC<HandGameCanvasProps> = ({
                 ? '⚡ Modo Sprint • Frenesí de 30 Segundos'
                 : gameMode === 'zen'
                 ? 'Modo Zen • Práctica Relajada'
-                : 'CortaFiguras AI • Modo Arcade (60s)'}
+                : 'CortaFiguras · EraBotGames Arcade (60s)'}
             </h2>
             <p className="text-slate-300 text-sm max-w-lg mb-6 leading-relaxed">
               {gameMode === 'sprint'

@@ -24,3 +24,85 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Star Wars Opening Intro - Pure GPU Compositor Transforms */
+@keyframes sw-prelude {
+  0% { opacity: 0; transform: translate3d(0, 8px, 0) scale(0.98); }
+  18% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  80% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  100% { opacity: 0; transform: translate3d(0, -6px, 0) scale(0.99); }
+}
+
+@keyframes sw-logo-recede {
+  0% { opacity: 0; transform: translate3d(0, 0, 0) scale(1.25); }
+  10% { opacity: 1; transform: translate3d(0, 0, 0) scale(1.12); }
+  75% { opacity: 0.96; transform: translate3d(0, 0, 0) scale(0.36); }
+  100% { opacity: 0; transform: translate3d(0, 0, 0) scale(0.12); }
+}
+
+@keyframes sw-crawl-scroll {
+  0% {
+    transform: rotateX(24deg) translate3d(0, 102%, 0);
+    opacity: 0;
+  }
+  5% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: rotateX(24deg) translate3d(0, -142%, 0);
+    opacity: 0;
+  }
+}
+
+@keyframes sw-progress-bar {
+  0% { transform: scaleX(0); }
+  100% { transform: scaleX(1); }
+}
+
+.sw-prelude-anim {
+  animation: sw-prelude 2.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.sw-logo-anim {
+  animation: sw-logo-recede 4.0s cubic-bezier(0.16, 1, 0.3, 1) 2.5s both;
+  will-change: transform, opacity;
+}
+
+.sw-crawl-stage {
+  perspective: 340px;
+  perspective-origin: 50% 62%;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 0, 0, 0.25) 14%,
+    rgba(0, 0, 0, 0.85) 32%,
+    #000 50%,
+    #000 88%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 0, 0, 0.25) 14%,
+    rgba(0, 0, 0, 0.85) 32%,
+    #000 50%,
+    #000 88%,
+    transparent 100%
+  );
+}
+
+.sw-crawl-content {
+  transform-origin: 50% 100%;
+  animation: sw-crawl-scroll 15.2s linear 4.4s both;
+  will-change: transform, opacity;
+}
+
+.sw-progress-fill {
+  transform-origin: left center;
+  animation: sw-progress-bar 19.6s linear forwards;
+  will-change: transform;
+}

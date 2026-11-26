@@ -5,11 +5,13 @@ import { SubwayRunnerGame } from './components/SubwayRunnerGame';
 import { PhotoBoothCV } from './components/PhotoBoothCV';
 import { PythonStudio } from './components/PythonStudio';
 import { TutorialGuide } from './components/TutorialGuide';
+import { StarWarsIntro } from './components/StarWarsIntro';
 import { ActiveGame, GameMode } from './types';
 import { runnerAudio } from './utils/runnerAudio';
 import { Zap, Award, Sparkles, Heart, Hand, Footprints, Aperture } from 'lucide-react';
 
 export default function App() {
+  const [showIntro, setShowIntro] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<'game' | 'python' | 'guide'>('game');
   const [activeGame, setActiveGame] = useState<ActiveGame>('slicer');
   const [gameMode, setGameMode] = useState<GameMode>('arcade');
@@ -70,6 +72,13 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-slate-950">
+      {showIntro && (
+        <StarWarsIntro
+          onComplete={() => setShowIntro(false)}
+          soundEnabled={soundEnabled}
+        />
+      )}
+
       {/* Navigation Header */}
       <Navbar
         activeTab={activeTab}
@@ -78,6 +87,7 @@ export default function App() {
         setSoundEnabled={setSoundEnabled}
         highScore={activeHighScore}
         onResetHighScore={handleResetHighScore}
+        onReplayIntro={() => setShowIntro(true)}
       />
 
       {/* Main Content Area */}
@@ -89,7 +99,7 @@ export default function App() {
               <div>
                 <h2 className="font-display text-lg font-bold text-white tracking-tight">
                   {activeGame === 'slicer'
-                    ? 'CortaFiguras AI'
+                    ? 'CortaFiguras · EraBotGames'
                     : activeGame === 'runner'
                     ? 'Metro Runner CV'
                     : 'Cabina de Fotos CV'}
@@ -99,7 +109,7 @@ export default function App() {
                     ? 'Seguimiento de manos · Corta figuras en el aire'
                     : activeGame === 'runner'
                     ? 'Seguimiento corporal · Esquiva obstáculos, combate Jefes y crea elementos con monedas'
-                    : 'Solo pulgar e índice · Filtros aleatorios y Sliding Puzzle en vivo en cámara'}
+                    : 'Hasta 6 manos · Filtro único por mano (Magia Dr. Strange y 26 efectos) + Sliding Puzzle'}
                 </p>
               </div>
 
@@ -244,11 +254,11 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center space-x-2">
             <Sparkles className="w-4 h-4 text-cyan-400" />
-            <span className="font-semibold text-slate-400">CortaFiguras AI</span>
-            <span>· Visión Artificial con MediaPipe Hands & Pose</span>
+            <span className="font-semibold text-slate-300">EraBotGames</span>
+            <span>· Carlos Stiven Roa · Grupo: CEMOS · Semillero: ERA</span>
           </div>
           <div>
-            Juegos interactivos con seguimiento gestual y corporal en tiempo real
+            Suite 100% Offline de Visión Artificial con MediaPipe Hands &amp; Pose
           </div>
         </div>
       </footer>

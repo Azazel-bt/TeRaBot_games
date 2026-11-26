@@ -4,13 +4,19 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/sync-offline-assets.mjs",
     "dev": "vite --port=3000 --host=0.0.0.0",
+    "prebuild": "node scripts/sync-offline-assets.mjs",
     "build": "vite build",
     "preview": "vite preview",
+    "start:offline": "node scripts/serve-offline.mjs --open",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@fontsource/chakra-petch": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@fontsource/plus-jakarta-sans": "^5.3.0",
     "@google/genai": "^2.4.0",
     "@mediapipe/camera_utils": "^0.3.1675466862",
     "@mediapipe/hands": "^0.4.1675469240",

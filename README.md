@@ -1,17 +1,19 @@
-# CortaFiguras AI · Suite Interactiva de Visión Artificial (CV)
+# EraBotGames · Suite Interactiva de Visión Artificial (100% Offline)
 
-Aplicación web interactiva de **Visión Artificial en tiempo real** construida con **React 19**, **TypeScript**, **Tailwind CSS**, **Three.js**, **MediaPipe Hands & Pose** y síntesis musical procedural en **Web Audio API**.
+> **Programa hecho por:** Carlos Stiven Roa · **Grupo:** CEMOS · **Semillero:** ERA
 
-Incluye tres experiencias jugables con cámara (y controles alternativos por teclado/táctil), un estudio generador de scripts Python para escritorio y una guía técnica interactiva.
+Aplicación web interactiva de **Visión Artificial en tiempo real 100% offline** construida con **React 19**, **TypeScript**, **Tailwind CSS**, **Three.js**, **MediaPipe Hands & Pose** (empaquetados localmente en `public/mediapipe/`), fuentes locales (`@fontsource`) y síntesis musical procedural en **Web Audio API**.
+
+Al iniciar presenta una **introducción cinematográfica estilo Star Wars** con créditos animados en perspectiva 3D y starfield en tiempo real (con opción para activar fanfarria épica, saltar con `Espacio` o repetir desde el botón **Intro**).
 
 ---
 
 ## Pantallas de la Interfaz
 
-### 1. CortaFiguras AI (Seguimiento Dual de Manos)
+### 1. CortaFiguras · EraBotGames (Seguimiento Dual de Manos)
 Juego tipo *fruit-slicer* con seguimiento simultáneo de ambas manos (`MediaPipe Hands`), modos **Arcade (60s · 3 vidas)**, **Sprint (30s · x2 en combos)** y **Zen (sin límite)**, estela luminosa de dedos, bombas y congeladores de tiempo.
 
-![CortaFiguras AI](docs/screenshots/01-cortafiguras-ai.png)
+![EraBotGames - CortaFiguras](docs/screenshots/01-cortafiguras-ai.png)
 
 ---
 
@@ -22,11 +24,11 @@ Juego 3D en **Three.js** controlado con postura corporal (`MediaPipe Pose`) o te
 
 ---
 
-### 3. Metro Runner CV — Jugando · Indicador de Carga de Combo y Umbral x10
-HUD de combate y carrera en tiempo real que incluye:
-- **Carga de Combo · Umbral x10 (`0 → 1,000`)**: Barra segmentada con marcador explícito del **Umbral 1,000** que activa **Invulnerabilidad total + Multiplicador de Daño x10 + Destrucción de obstáculos** durante 10 segundos.
-- **Cadena de Combo Visual**: 4 ranuras (`IZQ ❄️` / `DER 🔥`) con vista previa del siguiente golpe y barra de temporizador de cadena.
-- **Medidores de Detección de Puños**: Barras de extensión en vivo para puño izquierdo (Bola de Nieve) y puño derecho (Bola de Fuego) normalizadas por ancho de hombros.
+### 3. Metro Runner CV — Jugando · Barras Verticales Izquierda y Derecha + Jefes a Distancia
+HUD limpio con **dos barras verticales compactas** en los costados para mantener el centro 3D completamente despejado:
+- **Barra Vertical Izquierda (`PODER · 0 → 1,000`)**: Medidor ascendente con marcador explícito del **Umbral 1,000** para activar **Invulnerabilidad total + Daño x10 + Destrucción de obstáculos** durante 10 segundos.
+- **Barra Vertical Derecha (`COMBO ACTUAL`)**: Muestra el combo activo o en cadena, 4 ranuras verticales (`IZQ ❄️` / `DER 🔥`) con vista previa del siguiente golpe, temporizador vertical de cadena y medidores en vivo de empuje de ambos puños.
+- **Jefes al Fondo que Lanzan Obstáculos**: Cada 3 niveles, los Jefes aparecen al fondo del túnel (`z = -48`) y lanzan obstáculos en arco parabólico hacia las vías.
 
 ![Metro Runner CV - Carga de Combo y Umbral x10](docs/screenshots/03-metro-runner-carga-combo-hud.png)
 
@@ -46,16 +48,17 @@ Banco persistente de monedas para fabricar elementos consumibles durante la carr
 
 ---
 
-### 6. Metro Runner CV — Poderes de Brazos y Combos de Boxeo
-Guía en partida de los ataques elementales (**Bola de Nieve Crio** / **Bola de Fuego Solar**), los 4 combos encadenados (**1-2 Clásico**, **Demoledor Rompe-Muros**, **Martillo Rompe-Escudos**, **Ráfaga Campeón**) y el **Poder Supremo x10**.
+### 6. Metro Runner CV — Entrenador de Gestos y Combos Especiales Pre-Juego
+Sección interactiva accesible antes de iniciar la carrera para visualizar los comandos de gestos CV (`Puño IZQ` / `Puño DER`) de los 4 combos especiales (**1-2 Clásico**, **Demoledor Rompe-Muros**, **Martillo Rompe-Escudos**, **Ráfaga Campeón**) y practicarlos en vivo con la cámara, teclas `K`/`J` o botones simuladores hasta dominarlos (`Dominados: X/4`).
 
 ![Poderes de Brazos y Combos](docs/screenshots/06-metro-runner-combos.png)
 
 ---
 
-### 7. Cabina de Fotos CV — Filtros Ópticos en Vivo
-Cabina fotográfica multipersona (`maxNumHands: 6`) basada únicamente en **pulgar e índice**:
-- **Cierra y vuelve a abrir pulgar e índice** para cambiar automáticamente a un filtro aleatorio entre **16 lentes y efectos** (Ojo de Pez 8mm, Prisma RGB, Cámara Y2K, CRT Glitch VHS, Caleidoscopio, Fuego Solar, Corazones Flotantes, Halo Neón, entre otros).
+### 7. Cabina de Fotos CV — Filtros de Cine, Magia Dr. Strange y Filtro Único por Mano
+Cabina fotográfica multipersona (`maxNumHands: 6`) basada en **pulgar e índice**:
+- **Filtro distinto por cada mano detectada**: Cada mano abre su propio portal independiente (`M1`, `M2`, `M3`...) con un efecto diferente al mismo tiempo.
+- **Cierra y vuelve a abrir pulgar e índice** en una mano para rotar aleatoriamente su propio filtro entre **26 efectos** incluyendo magia animada (**Magia Dr. Strange**, **Dimensión Espejo**, **Ojo de Agamotto**, **Holograma Galáctico**, **Magia Escarlata**, **Escudo Patronus**, **Pulso Vibranium**, **Cómic Multiverso**, **Neon Blade Runner**, **Mundo del Revés**) y 16 lentes ópticos retro.
 - **Levanta índice + corazón en V (`✌️`)** para iniciar una cuenta regresiva de 3 segundos y capturar toda la pantalla.
 
 ![Cabina de Fotos CV](docs/screenshots/07-cabina-fotos-cv.png)
@@ -70,14 +73,14 @@ Al tomar una foto con el gesto `✌️` o **Captura Instantánea**, la captura s
 ---
 
 ### 9. Estudio de Código Python
-Generador personalizable de scripts nativos en Python (`OpenCV`, `MediaPipe` y `Pygame`) con ajuste de número de manos, resolución, velocidad máxima, duración y nivel de confianza para copiar o descargar en `.py`.
+Generador personalizable de scripts nativos en Python (`OpenCV`, `MediaPipe` y `Pygame`) para **CortaFiguras** (`corta_figuras.py` / `corta_figuras_pygame.py`), **Cabina Mágica CV** (`cabina_fotos_magia_cv.py` con filtro distinto por mano y mandala Dr. Strange) y **Metro Runner Pose** (`metro_runner_pose_cv.py` con barras laterales y combos x10).
 
 ![Estudio de Código Python](docs/screenshots/08-codigo-python.png)
 
 ---
 
 ### 10. Guía y Tutorial Técnico
-Documentación didáctica integrada sobre el funcionamiento del seguimiento de 2 manos, curvas de velocidad progresiva, temporizador de partidas y modo pantalla completa.
+Documentación didáctica integrada sobre toda la suite offline (`Iniciar_EraBotGames.bat`), seguimiento dual de manos, pose corporal con combos x10, jefes a distancia y cabina multifiltro con magia animada.
 
 ![Guía y Tutorial Técnico](docs/screenshots/09-guia-tutorial.png)
 
@@ -93,16 +96,31 @@ Documentación didáctica integrada sobre el funcionamiento del seguimiento de 2
 
 ---
 
-## Ejecución Local
+## Ejecución Offline en PC (Windows `.bat` sin Internet)
+
+Todo el proyecto incluye las tipografías y los modelos WASM/TFLite de **MediaPipe Hands & Pose** en local para verse y funcionar **exactamente igual sin conexión a internet**:
+
+1. Si es la primera vez en un equipo con Node.js instalado, genera la compilación lista para llevar offline (o deja que el `.bat` la genere una sola vez):
+   ```bash
+   npm install
+   npm run build
+   ```
+2. En cualquier PC Windows (incluso **100% sin internet** una vez compilada la carpeta `dist/`), haz doble clic en:
+   ```text
+   Iniciar_EraBotGames.bat
+   ```
+   Este lanzador inicia un servidor HTTP local ultra-ligero (`scripts/serve-offline.mjs`) en `http://localhost:3000` (con soporte nativo para `.wasm`, `.tflite`, `.data` y cámara web) y abre **EraBotGames** automáticamente en tu navegador.
+
+### Comandos de Desarrollo
 
 ```bash
-# 1. Instalar dependencias
-npm install
-
-# 2. Iniciar servidor de desarrollo (puerto 3000)
+# Sincronizar activos offline y levantar servidor dev (puerto 3000)
 npm run dev
 
-# 3. Verificar tipos y generar build de producción
+# Verificar tipos y generar compilación offline en dist/
 npm run lint
 npm run build
+
+# Servir la versión compilada en modo offline desde terminal
+npm run start:offline
 ```

@@ -44,7 +44,7 @@ export const ARM_POWERS: Record<ArmHand, ArmPowerDef> = {
     color: '#38bdf8',
     hex: 0x38bdf8,
     baseDamage: 1,
-    projectileSpeed: 60,
+    projectileSpeed: 86,
     powerGain: 5,
   },
   right: {
@@ -58,7 +58,7 @@ export const ARM_POWERS: Record<ArmHand, ArmPowerDef> = {
     color: '#f97316',
     hex: 0xf97316,
     baseDamage: 2,
-    projectileSpeed: 46,
+    projectileSpeed: 74,
     powerGain: 8,
   },
 };

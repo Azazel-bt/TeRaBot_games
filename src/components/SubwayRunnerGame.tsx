@@ -34,6 +34,7 @@ import {
   X,
   Coins,
   Hammer,
+  CheckCircle2,
 } from 'lucide-react';
 import { RunnerLane, RunnerPosture, RunnerPowerUpType } from '../types';
 import { runnerAudio } from '../utils/runnerAudio';
@@ -82,6 +83,14 @@ interface ObstacleEntity {
   bottomY: number;
   hasRamp?: boolean;
   rampLength?: number;
+  thrown?: {
+    startX: number;
+    startY: number;
+    startZ: number;
+    targetX: number;
+    landZ: number;
+    arcHeight: number;
+  };
   mesh: THREE.Group;
   passed: boolean;
 }
@@ -165,9 +174,9 @@ const JUMP_VELOCITY = 15.2;
 const DUCK_DURATION = 0.68;
 const TRAIN_ROOF_Y = 2.25;
 const RAMP_LENGTH = 4.0;
-const BOSS_BASE_Z = -17.5;
-const BOSS_BASE_Y = 5.8;
-const BOSS_COLOSSAL_SCALE = 3.25;
+const BOSS_BASE_Z = -48.0;
+const BOSS_BASE_Y = 6.2;
+const BOSS_COLOSSAL_SCALE = 3.85;
 const BOSS_INTRO_DURATION = 2.8;
 const LEVEL_WORDS = ['UIS', 'ERA', 'CEMOS', 'METRO', 'RUNNER'];
 
@@ -328,7 +337,10 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
   const [fistCharge, setFistCharge] = useState<{ left: number; right: number }>({ left: 0, right: 0 });
   const [activeComboName, setActiveComboName] = useState<string | null>(null);
   const [showComboMenu, setShowComboMenu] = useState<boolean>(false);
+  const showComboMenuRef = useRef<boolean>(false);
   const pausedForComboMenuRef = useRef<boolean>(false);
+  const [practicedCombos, setPracticedCombos] = useState<Record<string, boolean>>({});
+  const [practiceFeedMsg, setPracticeFeedMsg] = useState<string | null>(null);
 
   // Coin Bank & Crafted Elements ("Elementos Creados")
   const [coinWallet, setCoinWallet] = useState<number>(() => {
@@ -544,6 +556,44 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
   }, [gameState]);
 
   useEffect(() => {
+    showComboMenuRef.current = showComboMenu;
+  }, [showComboMenu]);
+
+  // Keep combo sequence decay & fist charge responsive while practicing before starting the game
+  useEffect(() => {
+    if (!showComboMenu || gameState === 'PLAYING') return;
+    const interval = window.setInterval(() => {
+      const dt = 0.05;
+      if (leftPunchAnimRef.current > 0) leftPunchAnimRef.current = Math.max(0, leftPunchAnimRef.current - dt);
+      if (rightPunchAnimRef.current > 0) rightPunchAnimRef.current = Math.max(0, rightPunchAnimRef.current - dt);
+      if (!isCameraActiveRef.current) {
+        fistChargeRef.current.left = Math.round((leftPunchAnimRef.current / 0.28) * 100);
+        fistChargeRef.current.right = Math.round((rightPunchAnimRef.current / 0.28) * 100);
+      }
+      if (comboWindowTimerRef.current > 0) {
+        comboWindowTimerRef.current = Math.max(0, comboWindowTimerRef.current - dt);
+        setComboWindowPct(Math.round((comboWindowTimerRef.current / COMBO_WINDOW_SEC) * 100));
+        if (comboWindowTimerRef.current === 0 && comboHistoryRef.current.length > 0) {
+          comboHistoryRef.current = [];
+          setComboSequence([]);
+          setComboWindowPct(0);
+        }
+      }
+      if (comboNameTimerRef.current > 0) {
+        comboNameTimerRef.current = Math.max(0, comboNameTimerRef.current - dt);
+        if (comboNameTimerRef.current === 0) {
+          setActiveComboName(null);
+        }
+      }
+      setFistCharge({
+        left: Math.round(fistChargeRef.current.left),
+        right: Math.round(fistChargeRef.current.right),
+      });
+    }, 50);
+    return () => window.clearInterval(interval);
+  }, [showComboMenu, gameState]);
+
+  useEffect(() => {
     maxSpeedMultiplierRef.current = maxSpeedMultiplier;
   }, [maxSpeedMultiplier]);
 
@@ -674,7 +724,9 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
 
   const triggerPunch = useCallback(
     (hand: ArmHand) => {
-      if (gameStateRef.current !== 'PLAYING') return;
+      const isPlaying = gameStateRef.current === 'PLAYING';
+      const isPractice = !isPlaying && showComboMenuRef.current;
+      if (!isPlaying && !isPractice) return;
 
       const armCfg = ARM_POWERS[hand];
       if (hand === 'left') {
@@ -708,15 +760,28 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
       let gain = armCfg.powerGain;
       if (combo) {
         gain = combo.powerCharge;
-        scoreRef.current += combo.bonusScore;
+        if (isPlaying) {
+          scoreRef.current += combo.bonusScore;
+        }
         runnerAudio.playComboTrigger();
         setActiveComboName(
           combo.breaksObstacles ? `${combo.name} · ¡ROMPE OBSTÁCULOS!` : combo.name
         );
         comboNameTimerRef.current = 1.75;
         setPunchFlashLabel(`¡${combo.name.toUpperCase()}!`);
+        if (isPractice) {
+          setPracticedCombos((prev) => ({ ...prev, [combo.id]: true }));
+          setPracticeFeedMsg(`¡Combo ejecutado: ${combo.name} (+${combo.powerCharge} Poder)!`);
+        }
       } else {
         setPunchFlashLabel(hand === 'left' ? '¡BOLA DE NIEVE!' : '¡BOLA DE FUEGO!');
+        if (isPractice) {
+          setPracticeFeedMsg(
+            hand === 'left'
+              ? 'Jab IZQ (Nieve) detectado · Sigue la cadena antes que termine el tiempo'
+              : 'Recto DER (Fuego) detectado · Sigue la cadena antes que termine el tiempo'
+          );
+        }
       }
       punchFlashTimerRef.current = 0.55;
 
@@ -726,16 +791,25 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
         setPowerMeter(Math.round(nextMeter));
 
         if (nextMeter >= POWER_METER_MAX) {
-          overdriveActiveRef.current = true;
-          overdriveTimerRef.current = OVERDRIVE_CONFIG.durationSec;
-          setOverdriveActive(true);
-          setOverdriveRemaining(OVERDRIVE_CONFIG.durationSec);
-          runnerAudio.playOverdriveActivate();
-          setBannerMessage('¡PODER SUPREMO x10! INMORTAL · DAÑO x10 · ROMPE OBSTÁCULOS');
-          bannerTimerRef.current = 3.2;
-          spawnBurst(playerXRef.current, playerYRef.current + 1.1, 0, 0xfacc15, 30);
+          if (isPractice) {
+            runnerAudio.playOverdriveActivate();
+            setPracticeFeedMsg('¡UMBRAL 1,000 ALCANZADO! Así se activa Invulnerabilidad + Daño x10.');
+            powerMeterRef.current = 0;
+            setPowerMeter(0);
+          } else {
+            overdriveActiveRef.current = true;
+            overdriveTimerRef.current = OVERDRIVE_CONFIG.durationSec;
+            setOverdriveActive(true);
+            setOverdriveRemaining(OVERDRIVE_CONFIG.durationSec);
+            runnerAudio.playOverdriveActivate();
+            setBannerMessage('¡PODER SUPREMO x10! INMORTAL · DAÑO x10 · ROMPE OBSTÁCULOS');
+            bannerTimerRef.current = 3.2;
+            spawnBurst(playerXRef.current, playerYRef.current + 1.1, 0, 0xfacc15, 30);
+          }
         }
       }
+
+      if (isPractice) return;
 
       const t = threeRef.current;
       if (!t) return;
@@ -746,7 +820,7 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
       const airborne = playerYRef.current > 0.35;
 
       const projDamage = combo ? combo.damage : armCfg.baseDamage;
-      const projSpeed = combo ? 64 : armCfg.projectileSpeed;
+      const projSpeed = combo ? 94 : armCfg.projectileSpeed;
       const breaksObstacles = Boolean(combo?.breaksObstacles || isOverdrive);
       const shattersShield = Boolean(combo?.shattersShield || isOverdrive);
       const slowsBoss = hand === 'left';
@@ -936,6 +1010,7 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
     setComboWindowPct(0);
     setFistCharge({ left: 0, right: 0 });
     setActiveComboName(null);
+    setPracticeFeedMsg(null);
     setActiveShield(false);
     setMagnetRemaining(0);
     setMultiplierRemaining(0);
@@ -943,6 +1018,8 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
   }, []);
 
   const startGame = useCallback(() => {
+    setShowComboMenu(false);
+    pausedForComboMenuRef.current = false;
     resetWorld();
     gameStateRef.current = 'PLAYING';
     setGameState('PLAYING');
@@ -1193,7 +1270,7 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
     scene.environment = envTarget.texture;
     pmremGenerator.dispose();
 
-    const camera = new THREE.PerspectiveCamera(62, width / height, 0.1, 180);
+    const camera = new THREE.PerspectiveCamera(62, width / height, 0.1, 220);
     camera.position.set(0, 4.4, 7.6);
     camera.lookAt(0, 1.4, -12);
 
@@ -2074,8 +2151,8 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
       const scaledMaxHp = cfg.maxHp + currentLevel * 120;
 
       const rig = createBossRig(themeId);
-      rig.root.position.set(0, 14.0, -48);
-      rig.root.scale.setScalar(0.75);
+      rig.root.position.set(0, 18.0, -96);
+      rig.root.scale.setScalar(1.1);
       t.scene.add(rig.root);
       t.bossRig = rig;
 
@@ -2084,7 +2161,7 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
       bossCycleRef.current = cycle;
       bossLaneRef.current = 0;
       bossXRef.current = 0;
-      bossZRef.current = -48;
+      bossZRef.current = -96;
       bossRecoilRef.current = 0;
       bossIntroTimerRef.current = BOSS_INTRO_DURATION;
       bossTelegraphTimerRef.current = 0;
@@ -2142,54 +2219,78 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
       const t = threeRef.current;
       if (!t) return;
       const lanes: RunnerLane[] = [-1, 0, 1];
-      const spawnZ = -19.0;
+      const bCfg = BOSS_CONFIGS[themeId];
+      const launchX = bossXRef.current;
+      const launchY = Math.max(3.2, BOSS_BASE_Y - 1.1);
+      const launchZ = bossZRef.current + 3.2;
 
-      // Primary obstacle fired directly along Boss's current lane
+      // Visual throw recoil + muzzle burst from the distant Boss
+      bossRecoilRef.current = -1.8;
+      spawnBurst(launchX, launchY, launchZ, bCfg.accentHex, 24);
+
+      // Primary obstacle hurled directly from the Boss onto its target lane
       const primaryKind: 'low' | 'high' = Math.random() < 0.56 ? 'low' : 'high';
       const primary = createBossObstacleMesh(themeId, primaryKind);
-      primary.group.position.set(LANE_POSITIONS[bossLane], 0, spawnZ);
+      primary.group.position.set(launchX, launchY, launchZ);
       t.scene.add(primary.group);
       t.obstacles.push({
         id: t.entityIdCounter++,
         kind: primaryKind,
         lane: bossLane,
-        z: spawnZ,
-        speedOffset: 2.0,
+        z: launchZ,
+        speedOffset: 4.5,
         width: primary.width,
         height: primary.height,
         depth: primary.depth,
         bottomY: primary.bottomY,
+        thrown: {
+          startX: launchX,
+          startY: launchY,
+          startZ: launchZ,
+          targetX: LANE_POSITIONS[bossLane],
+          landZ: -16.5,
+          arcHeight: 2.8,
+        },
         mesh: primary.group,
         passed: false,
       });
 
-      // Secondary obstacle on one side lane (leaving at least one clear lane) + coins
+      // Secondary obstacle hurled onto a side lane (leaving at least one clear lane) + coins
       const otherLanes = lanes.filter((l) => l !== bossLane);
       if (Math.random() < 0.72) {
         const secondLane = otherLanes[Math.floor(Math.random() * otherLanes.length)];
         const secondKind: 'low' | 'high' = Math.random() < 0.5 ? 'low' : 'high';
         const secondary = createBossObstacleMesh(themeId, secondKind);
-        secondary.group.position.set(LANE_POSITIONS[secondLane], 0, spawnZ - 4.5);
+        const secondStartZ = launchZ - 4.5;
+        secondary.group.position.set(launchX, launchY, secondStartZ);
         t.scene.add(secondary.group);
         t.obstacles.push({
           id: t.entityIdCounter++,
           kind: secondKind,
           lane: secondLane,
-          z: spawnZ - 4.5,
-          speedOffset: 2.0,
+          z: secondStartZ,
+          speedOffset: 4.5,
           width: secondary.width,
           height: secondary.height,
           depth: secondary.depth,
           bottomY: secondary.bottomY,
+          thrown: {
+            startX: launchX,
+            startY: launchY,
+            startZ: secondStartZ,
+            targetX: LANE_POSITIONS[secondLane],
+            landZ: -20.5,
+            arcHeight: 3.4,
+          },
           mesh: secondary.group,
           passed: false,
         });
       }
 
       const coinLane = otherLanes[Math.floor(Math.random() * otherLanes.length)];
-      spawnCoinLine(coinLane, spawnZ - 2, 3, 'flat');
+      spawnCoinLine(coinLane, launchZ + 2, 3, 'flat');
       if (Math.random() < 0.18) {
-        spawnPowerUp(bossLane, spawnZ - 7);
+        spawnPowerUp(bossLane, launchZ - 5);
       }
     };
 
@@ -2199,11 +2300,44 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
 
     // Main Animation Loop
     let rafId = 0;
+    let timerId = 0;
+    let disposed = false;
     let lastTime = performance.now();
     let hudSyncAccum = 0;
 
+    const afterDraw = (cb: () => void) => {
+      const gl = renderer.getContext() as WebGL2RenderingContext;
+      const sync = typeof gl.fenceSync === 'function' ? gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0) : null;
+      gl.flush();
+      const poll = () => {
+        if (disposed) {
+          if (sync) gl.deleteSync(sync);
+          return;
+        }
+        const state = sync && gl.getSyncParameter(sync, gl.SYNC_STATUS);
+        if (state === gl.UNSIGNALED) {
+          timerId = window.setTimeout(poll, 5);
+        } else {
+          if (sync) gl.deleteSync(sync);
+          timerId = window.setTimeout(cb, 80);
+        }
+      };
+      timerId = window.setTimeout(poll, 5);
+    };
+
+    const scheduleNextFrame = () => {
+      if (disposed) return;
+      if (isSoftwareGl) {
+        afterDraw(() => {
+          if (!disposed) animate(performance.now());
+        });
+      } else {
+        rafId = requestAnimationFrame(animate);
+      }
+    };
+
     const animate = (now: number) => {
-      rafId = requestAnimationFrame(animate);
+      if (disposed) return;
       const dt = Math.min((now - lastTime) / 1000, 0.08);
       lastTime = now;
 
@@ -2254,6 +2388,7 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
         t.camera.position.x = Math.sin(now * 0.0008) * 0.35;
         t.camera.lookAt(0, 1.4, -12);
         t.renderer.render(t.scene, t.camera);
+        scheduleNextFrame();
         return;
       }
 
@@ -2264,6 +2399,7 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
           t.camera.position.y = 4.4 + (Math.random() - 0.5) * 0.35;
         }
         t.renderer.render(t.scene, t.camera);
+        scheduleNextFrame();
         return;
       }
 
@@ -2362,7 +2498,22 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
       for (let i = 0; i < t.obstacles.length; i++) {
         const obs = t.obstacles[i];
         obs.z += (currentSpeed + obs.speedOffset) * dt;
-        obs.mesh.position.z = obs.z;
+        if (obs.thrown) {
+          const denom = Math.max(1, obs.thrown.landZ - obs.thrown.startZ);
+          const tArc = THREE.MathUtils.clamp((obs.z - obs.thrown.startZ) / denom, 0, 1);
+          const curX = THREE.MathUtils.lerp(obs.thrown.startX, obs.thrown.targetX, tArc);
+          const arcLift = Math.sin(tArc * Math.PI) * obs.thrown.arcHeight;
+          const curY = THREE.MathUtils.lerp(obs.thrown.startY, 0, tArc * tArc) + arcLift;
+          obs.mesh.position.set(curX, curY, obs.z);
+          obs.mesh.rotation.x = tArc < 1 ? (1 - tArc) * 0.65 : 0;
+          if (tArc >= 1) {
+            obs.mesh.position.set(obs.thrown.targetX, 0, obs.z);
+            obs.mesh.rotation.x = 0;
+            obs.thrown = undefined;
+          }
+        } else {
+          obs.mesh.position.z = obs.z;
+        }
 
         if (obs.kind === 'train') {
           const obsX = LANE_POSITIONS[obs.lane];
@@ -2500,9 +2651,9 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
           bossIntroTimerRef.current = Math.max(0, bossIntroTimerRef.current - dt);
           const progress = 1 - bossIntroTimerRef.current / BOSS_INTRO_DURATION;
           const eased = 1 - Math.pow(1 - progress, 3);
-          const introZ = -48 + (BOSS_BASE_Z - -48) * eased;
-          const introY = 14.0 + (BOSS_BASE_Y - 14.0) * eased;
-          const introScale = 0.75 + (BOSS_COLOSSAL_SCALE - 0.75) * eased;
+          const introZ = -96 + (BOSS_BASE_Z - -96) * eased;
+          const introY = 18.0 + (BOSS_BASE_Y - 18.0) * eased;
+          const introScale = 1.1 + (BOSS_COLOSSAL_SCALE - 1.1) * eased;
 
           bossZRef.current = introZ;
           bossXRef.current = 0;
@@ -2553,11 +2704,11 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
             }
           }
 
-          // Smooth Hit Recoil + Attack Lunge along Z around BOSS_BASE_Z (-17.5)
+          // Smooth Hit Recoil + Attack Lunge along Z around BOSS_BASE_Z (-48.0)
           bossRecoilRef.current *= Math.exp(-dt * 8.5);
           if (Math.abs(bossRecoilRef.current) < 0.01) bossRecoilRef.current = 0;
 
-          const lungeZ = bossTelegraphTimerRef.current > 0 ? 2.4 : 0;
+          const lungeZ = bossTelegraphTimerRef.current > 0 ? 3.2 : 0;
           const targetZ = BOSS_BASE_Z + lungeZ + bossRecoilRef.current;
           bossZRef.current += (targetZ - bossZRef.current) * Math.min(1, dt * 10);
 
@@ -2869,14 +3020,14 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
       for (let i = t.punchProjectiles.length - 1; i >= 0; i--) {
         const proj = t.punchProjectiles[i];
         proj.z -= proj.speed * dt;
-        // Gently arc punches up toward the towering colossal Boss when Boss battle is active
+        // Gently arc punches up toward the towering distant Boss when Boss battle is active
         if (bossActiveRef.current && bossIntroTimerRef.current <= 0 && proj.z < -2.5) {
-          proj.y += (BOSS_BASE_Y - 0.6 - proj.y) * Math.min(1, dt * 5.2);
+          proj.y += (BOSS_BASE_Y - 0.6 - proj.y) * Math.min(1, dt * 6.8);
         }
         proj.mesh.position.set(proj.x, proj.y, proj.z);
         proj.mesh.rotation.z += dt * 10;
 
-        let removeProj = proj.z < (proj.breaksObstacles ? -46 : -30);
+        let removeProj = proj.z < -66;
 
         // Obstacle-breaking shockwaves shatter obstacles ahead!
         if (proj.breaksObstacles) {
@@ -2900,10 +3051,10 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
           bossActiveRef.current &&
           bossIntroTimerRef.current <= 0 &&
           t.bossRig &&
-          proj.z <= bossZRef.current + 4.8 &&
-          proj.z >= bossZRef.current - 5.2
+          proj.z <= bossZRef.current + 5.6 &&
+          proj.z >= bossZRef.current - 6.0
         ) {
-          if (Math.abs(proj.x - bossXRef.current) < 5.8) {
+          if (Math.abs(proj.x - bossXRef.current) < 6.4) {
             removeProj = true;
             const bCfg = BOSS_CONFIGS[bossThemeRef.current];
             const isOverdriveNow = proj.isOverdrive || overdriveActiveRef.current;
@@ -3186,12 +3337,21 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
       }
 
       t.renderer.render(t.scene, t.camera);
+      scheduleNextFrame();
     };
 
-    rafId = requestAnimationFrame(animate);
+    if (isSoftwareGl) {
+      timerId = window.setTimeout(() => {
+        if (!disposed) animate(performance.now());
+      }, 16);
+    } else {
+      rafId = requestAnimationFrame(animate);
+    }
 
     return () => {
+      disposed = true;
       cancelAnimationFrame(rafId);
+      clearTimeout(timerId);
       resizeObserver.disconnect();
       renderer.domElement.removeEventListener('webglcontextlost', handleContextLost);
       renderer.domElement.removeEventListener('webglcontextrestored', handleContextRestored);
@@ -3407,7 +3567,7 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
       }
 
       const pose = new PoseCtor({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
+        locateFile: (file) => `/mediapipe/pose/${file}`,
       });
 
       pose.setOptions({
@@ -3601,7 +3761,7 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
           };
 
           if (
-            gameStateRef.current === 'PLAYING' &&
+            (gameStateRef.current === 'PLAYING' || showComboMenuRef.current) &&
             fistRaised &&
             (zThrust || snapJab || rapidHookThrust) &&
             now - lastAtRef.current > 250
@@ -3955,100 +4115,131 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
           )}
         </div>
 
-        {/* Bottom-Left Visual "Carga de Combo" & Invulnerability/x10 Threshold HUD */}
+        {/* Left & Right Slim Vertical Bars (Unobstructed Center Track) */}
         {gameState === 'PLAYING' && (() => {
           const powerPct = Math.min(100, (powerMeter / POWER_METER_MAX) * 100);
           const remainingToThreshold = Math.max(0, POWER_METER_MAX - powerMeter);
           const comboHint = getNextComboHint(comboSequence);
           return (
-            <div
-              className={`absolute bottom-16 sm:bottom-4 left-3.5 z-20 pointer-events-none w-[305px] sm:w-[375px] bg-slate-950/95 rounded-2xl px-4 py-3 shadow-2xl border-2 transition-colors ${
-                overdriveActive
-                  ? 'border-amber-400 shadow-amber-500/30'
-                  : powerPct >= 80
-                  ? 'border-amber-400/75'
-                  : 'border-cyan-500/45'
-              }`}
-            >
-              {/* Header: Threshold Target vs Active Overdrive */}
-              <div className="flex items-center justify-between gap-2 mb-1.5">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <Zap
-                    className={`w-4 h-4 shrink-0 ${
-                      overdriveActive ? 'text-amber-300 animate-pulse' : 'text-cyan-400'
-                    }`}
+            <>
+              {/* LEFT VERTICAL BAR: Carga de Poder & Umbral x10 (0 → 1,000) */}
+              <div
+                className={`absolute bottom-4 left-3 z-20 pointer-events-none w-[66px] sm:w-[74px] bg-slate-950/92 rounded-2xl px-2 py-2.5 shadow-2xl border-2 flex flex-col items-center gap-1.5 transition-colors ${
+                  overdriveActive
+                    ? 'border-amber-400 shadow-amber-500/35'
+                    : powerPct >= 80
+                    ? 'border-amber-400/75'
+                    : 'border-cyan-500/45'
+                }`}
+              >
+                <div className="text-center leading-tight">
+                  <div className="flex items-center justify-center gap-0.5">
+                    <Zap
+                      className={`w-3 h-3 shrink-0 ${
+                        overdriveActive ? 'text-amber-300 animate-pulse' : 'text-cyan-400'
+                      }`}
+                    />
+                    <span
+                      className={`text-[9px] font-black uppercase tracking-wider ${
+                        overdriveActive ? 'text-amber-300' : 'text-cyan-200'
+                      }`}
+                    >
+                      {overdriveActive ? 'x10!' : 'PODER'}
+                    </span>
+                  </div>
+                  <span className="block font-mono-num text-[10px] font-black text-amber-300">
+                    {powerMeter}
+                  </span>
+                </div>
+
+                {/* Threshold Badge at Top of Bar */}
+                <span className="px-1 py-0.5 rounded bg-amber-400/20 border border-amber-300/60 text-[8px] font-black text-amber-200 leading-none">
+                  {overdriveActive ? `${overdriveRemaining}s` : '1,000'}
+                </span>
+
+                {/* Vertical Bottom-to-Top Power Fill Column */}
+                <div className="relative w-5 sm:w-6 h-28 sm:h-36 rounded-full bg-slate-800/95 overflow-hidden border border-slate-600/80 flex flex-col justify-end">
+                  <div
+                    className="w-full transition-all duration-100 rounded-full"
+                    style={{
+                      height: `${powerPct}%`,
+                      background: overdriveActive
+                        ? 'linear-gradient(0deg, #f59e0b, #facc15, #fef08a)'
+                        : powerPct >= 80
+                        ? 'linear-gradient(0deg, #06b6d4, #f59e0b, #facc15)'
+                        : 'linear-gradient(0deg, #0284c7, #06b6d4, #22d3ee)',
+                      boxShadow: overdriveActive
+                        ? '0 0 16px rgba(250, 204, 21, 0.9)'
+                        : '0 0 12px rgba(34, 211, 238, 0.65)',
+                    }}
                   />
+                  {[25, 50, 75].map((pct) => (
+                    <div
+                      key={pct}
+                      className="absolute left-0 right-0 h-px bg-slate-950/80"
+                      style={{ bottom: `${pct}%` }}
+                    />
+                  ))}
+                </div>
+
+                <div className="text-center leading-tight">
                   <span
-                    className={`text-xs font-black tracking-wide truncate ${
-                      overdriveActive ? 'text-amber-300' : 'text-cyan-200'
+                    className={`block text-[8px] font-black uppercase ${
+                      overdriveActive ? 'text-emerald-300' : 'text-amber-300'
                     }`}
                   >
-                    {overdriveActive
-                      ? `¡INVULNERABLE + DAÑO x10! (${overdriveRemaining}s)`
-                      : 'CARGA DE COMBO · UMBRAL x10'}
+                    {overdriveActive ? 'INMORTAL' : 'INVULN+x10'}
+                  </span>
+                  <span className="block font-mono-num text-[9px] text-slate-300">
+                    {overdriveActive ? 'ACTIVO' : `-${remainingToThreshold}`}
                   </span>
                 </div>
-                <span className="font-mono-num text-xs font-black text-amber-300 shrink-0">
-                  {powerMeter} / {POWER_METER_MAX}
+
+                {/* Live Left Fist (Nieve) Charge */}
+                <div className="w-full pt-1 border-t border-slate-800 flex items-center justify-between gap-1">
+                  <Snowflake className="w-3 h-3 text-cyan-400 shrink-0" />
+                  <span className="font-mono-num text-[9px] font-bold text-cyan-300">
+                    {fistCharge.left}%
+                  </span>
+                </div>
+              </div>
+
+              {/* RIGHT VERTICAL BAR: Combo Actual & Secuencia de Puños */}
+              <div
+                className={`absolute top-16 right-3 z-20 pointer-events-none w-[78px] sm:w-[88px] bg-slate-950/92 rounded-2xl px-2 py-2.5 shadow-2xl border-2 flex flex-col items-center gap-1.5 transition-colors ${
+                  activeComboName
+                    ? 'border-emerald-400 shadow-emerald-500/30'
+                    : comboSequence.length > 0
+                    ? 'border-amber-400/75'
+                    : 'border-slate-700/80'
+                }`}
+              >
+                <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">
+                  COMBO ACTUAL
                 </span>
-              </div>
 
-              {/* Segmented Power Meter with Explicit 1,000 Threshold Line & Milestone Ticks */}
-              <div className="relative w-full h-5 rounded-full bg-slate-800/95 overflow-hidden border border-slate-600/80 mb-1.5">
+                {/* Active Combo Badge or Current State */}
                 <div
-                  className="h-full transition-all duration-100 rounded-full"
-                  style={{
-                    width: `${powerPct}%`,
-                    background: overdriveActive
-                      ? 'linear-gradient(90deg, #f59e0b, #facc15, #fef08a)'
-                      : powerPct >= 80
-                      ? 'linear-gradient(90deg, #06b6d4, #f59e0b, #facc15)'
-                      : 'linear-gradient(90deg, #0284c7, #06b6d4, #22d3ee)',
-                    boxShadow: overdriveActive
-                      ? '0 0 18px rgba(250, 204, 21, 0.9)'
-                      : '0 0 14px rgba(34, 211, 238, 0.65)',
-                  }}
-                />
-                {/* 25% / 50% / 75% Quarter Milestones */}
-                {[25, 50, 75].map((pct) => (
-                  <div
-                    key={pct}
-                    className="absolute top-0 bottom-0 w-px bg-slate-950/75"
-                    style={{ left: `${pct}%` }}
-                  />
-                ))}
-                {/* Bold Golden Goal Marker at 100% Threshold */}
-                <div className="absolute top-0 bottom-0 right-1 flex items-center pointer-events-none">
-                  <span className="px-1.5 py-0.5 rounded bg-amber-400/20 border border-amber-300/60 text-[9px] font-black text-amber-200 leading-none">
-                    UMBRAL {POWER_METER_MAX}
-                  </span>
-                </div>
-              </div>
-
-              {/* Explicit Threshold Explanation Row: Invulnerability + Damage x10 */}
-              <div className="flex items-center justify-between gap-2 text-[10px] font-bold mb-2 pb-1.5 border-b border-slate-800/90">
-                <span
-                  className={`flex items-center gap-1 ${
-                    overdriveActive ? 'text-emerald-300' : 'text-amber-300'
+                  className={`w-full px-1 py-1 rounded-lg border text-center text-[9px] font-black leading-tight min-h-[28px] flex items-center justify-center ${
+                    activeComboName
+                      ? 'bg-emerald-500/20 border-emerald-400/70 text-emerald-200'
+                      : comboSequence.length > 0
+                      ? 'bg-amber-500/15 border-amber-400/50 text-amber-200'
+                      : 'bg-slate-900/90 border-slate-800 text-slate-400'
                   }`}
                 >
-                  <Shield className="w-3 h-3 shrink-0" />
-                  <span>
-                    {overdriveActive
-                      ? 'INMORTAL + DAÑO x10 + ROMPE OBSTÁCULOS'
-                      : 'Meta 1,000 = Invulnerable + Daño x10'}
+                  <span className="line-clamp-2">
+                    {activeComboName
+                      ? activeComboName.replace(' · ¡ROMPE OBSTÁCULOS!', '')
+                      : comboSequence.length > 0
+                      ? `CADENA x${comboSequence.length}`
+                      : 'LISTO'}
                   </span>
-                </span>
-                <span className="font-mono-num text-slate-300 shrink-0">
-                  {overdriveActive ? 'ACTIVO' : `Faltan ${remainingToThreshold}`}
-                </span>
-              </div>
+                </div>
 
-              {/* Live Visual "Carga de Combo" (4 Fist Slots + Window Decay + Per-Fist Extension) */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  {/* 4 Visual Punch Slots */}
-                  <div className="flex items-center gap-1">
+                {/* 4 Vertical Punch Slots + Vertical Chain Timer Bar Side-by-Side */}
+                <div className="w-full flex items-stretch gap-1.5">
+                  <div className="flex-1 flex flex-col gap-1">
                     {[0, 1, 2, 3].map((slotIdx) => {
                       const punchedHand = comboSequence[slotIdx];
                       const isNextPreview =
@@ -4058,24 +4249,24 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
                       return (
                         <div
                           key={slotIdx}
-                          className={`h-6 min-w-[40px] px-1.5 rounded-md border flex items-center justify-center gap-0.5 text-[10px] font-black transition-all ${
+                          className={`h-6 rounded-md border flex items-center justify-center gap-0.5 text-[9px] font-black transition-all ${
                             punchedHand === 'left'
                               ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200 shadow-sm shadow-cyan-500/30'
                               : punchedHand === 'right'
                               ? 'bg-orange-500/25 border-orange-400 text-orange-200 shadow-sm shadow-orange-500/30'
                               : isNextPreview
-                              ? 'bg-slate-900/90 border-dashed border-amber-400/60 text-amber-300/80'
+                              ? 'bg-slate-900/90 border-dashed border-amber-400/60 text-amber-300/85'
                               : 'bg-slate-900/60 border-slate-800 text-slate-600'
                           }`}
                         >
                           {punchedHand === 'left' ? (
                             <>
-                              <Snowflake className="w-3 h-3" />
+                              <Snowflake className="w-2.5 h-2.5" />
                               <span>IZQ</span>
                             </>
                           ) : punchedHand === 'right' ? (
                             <>
-                              <Flame className="w-3 h-3" />
+                              <Flame className="w-2.5 h-2.5" />
                               <span>DER</span>
                             </>
                           ) : isNextPreview ? (
@@ -4088,56 +4279,36 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
                     })}
                   </div>
 
-                  {/* Combo Window Timer Bar */}
-                  <div className="flex-1 min-w-[72px]">
-                    <div className="flex items-center justify-between text-[9px] font-bold text-slate-400 mb-0.5">
-                      <span>CADENA</span>
-                      <span className="font-mono-num text-cyan-300">
-                        {comboWindowPct > 0 ? `${comboWindowPct}%` : 'LISTA'}
-                      </span>
-                    </div>
-                    <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                      <div
-                        className="h-full transition-all duration-100 rounded-full"
-                        style={{
-                          width: `${comboWindowPct}%`,
-                          backgroundColor:
-                            comboWindowPct > 45
-                              ? '#22d3ee'
-                              : comboWindowPct > 20
-                              ? '#facc15'
-                              : '#fb7185',
-                        }}
-                      />
-                    </div>
+                  {/* Vertical Combo Window Timer Fill */}
+                  <div
+                    className="w-2 rounded-full bg-slate-800 overflow-hidden flex flex-col justify-end border border-slate-700/70"
+                    title="Ventana de tiempo del combo"
+                  >
+                    <div
+                      className="w-full transition-all duration-75 rounded-full"
+                      style={{
+                        height: `${comboWindowPct}%`,
+                        backgroundColor:
+                          comboWindowPct > 45
+                            ? '#22d3ee'
+                            : comboWindowPct > 20
+                            ? '#facc15'
+                            : '#fb7185',
+                      }}
+                    />
                   </div>
                 </div>
 
-                {/* Next Combo Hint OR Active Combo Name */}
-                <div className="flex items-center justify-between gap-2 text-[10px] font-bold">
-                  <span className={activeComboName ? 'text-emerald-300 truncate' : 'text-slate-300 truncate'}>
-                    {activeComboName ? `¡${activeComboName}!` : comboHint.label}
-                  </span>
-                </div>
+                {/* Next Step Hint */}
+                <span className="text-[8px] font-bold text-slate-300 text-center leading-tight line-clamp-2">
+                  {comboSequence.length > 0 && comboHint.nextHand
+                    ? `Sig: ${comboHint.nextHand === 'left' ? 'IZQ (K)' : 'DER (J)'}`
+                    : 'K=Izq · J=Der'}
+                </span>
 
-                {/* Live Left & Right Fist Thrust Detection Meters */}
-                <div className="grid grid-cols-2 gap-2 pt-0.5">
-                  <div className="flex items-center gap-1.5">
-                    <Snowflake className="w-3 h-3 text-cyan-400 shrink-0" />
-                    <div className="flex-1 h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                      <div
-                        className="h-full transition-all duration-75 rounded-full"
-                        style={{
-                          width: `${fistCharge.left}%`,
-                          backgroundColor: fistCharge.left >= 90 ? '#facc15' : '#22d3ee',
-                        }}
-                      />
-                    </div>
-                    <span className="font-mono-num text-[9px] font-bold text-cyan-300 w-7 text-right">
-                      {fistCharge.left}%
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
+                {/* Live Right & Left Fist Thrust Meters */}
+                <div className="w-full pt-1 border-t border-slate-800 space-y-1">
+                  <div className="flex items-center justify-between gap-1">
                     <Flame className="w-3 h-3 text-orange-400 shrink-0" />
                     <div className="flex-1 h-1.5 rounded-full bg-slate-800 overflow-hidden">
                       <div
@@ -4148,13 +4319,28 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
                         }}
                       />
                     </div>
-                    <span className="font-mono-num text-[9px] font-bold text-orange-300 w-7 text-right">
+                    <span className="font-mono-num text-[8px] font-bold text-orange-300 w-6 text-right">
                       {fistCharge.right}%
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-1">
+                    <Snowflake className="w-3 h-3 text-cyan-400 shrink-0" />
+                    <div className="flex-1 h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                      <div
+                        className="h-full transition-all duration-75 rounded-full"
+                        style={{
+                          width: `${fistCharge.left}%`,
+                          backgroundColor: fistCharge.left >= 90 ? '#facc15' : '#22d3ee',
+                        }}
+                      />
+                    </div>
+                    <span className="font-mono-num text-[8px] font-bold text-cyan-300 w-6 text-right">
+                      {fistCharge.left}%
                     </span>
                   </div>
                 </div>
               </div>
-            </div>
+            </>
           );
         })()}
 
@@ -4383,51 +4569,99 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
 
         {/* READY / START OVERLAY */}
         {gameState === 'READY' && (
-          <div className="absolute inset-0 z-30 bg-slate-950/75 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyan-500 to-amber-500 flex items-center justify-center mb-4 shadow-xl shadow-cyan-500/20">
-              <Zap className="w-7 h-7 text-slate-950" />
+          <div className="absolute inset-0 z-30 bg-slate-950/88 flex flex-col items-center justify-center p-4 sm:p-5 overflow-y-auto text-center">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-cyan-500 to-amber-500 flex items-center justify-center mb-2.5 shadow-xl shadow-cyan-500/20 shrink-0">
+              <Zap className="w-6 h-6 text-slate-950" />
             </div>
 
-            <h2 className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-white mb-2">
+            <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-white mb-1.5">
               Metro Runner CV
             </h2>
-            <p className="text-sm text-slate-300 max-w-lg mb-6 leading-relaxed">
-              Esquiva trenes, recoge letras 3D para cambiar de mundo y cada 3 niveles enfrenta a un Jefe lanzando puños con tu cámara CV o teclado.
+            <p className="text-xs sm:text-sm text-slate-300 max-w-xl mb-3.5 leading-snug">
+              Esquiva trenes, recoge letras 3D para cambiar de mundo y cada 3 niveles enfrenta a un Jefe lejano lanzando puños con tu cámara CV o teclado.
             </p>
 
             {/* Movement Guide Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-2xl w-full mb-6 text-left">
-              <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3">
-                <div className="flex items-center gap-2 text-cyan-300 text-xs font-semibold mb-1">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 max-w-2xl w-full mb-3 text-left">
+              <div className="bg-slate-900/95 border border-slate-800 rounded-xl p-2.5">
+                <div className="flex items-center gap-1.5 text-cyan-300 text-xs font-semibold mb-0.5">
                   <ArrowLeft className="w-3.5 h-3.5" />
                   <ArrowRight className="w-3.5 h-3.5" />
                   <span>Carriles</span>
                 </div>
-                <p className="text-[11px] text-slate-400">Muévete a izquierda o derecha frente a la cámara</p>
+                <p className="text-[11px] text-slate-400 leading-snug">Muévete a izquierda o derecha frente a la cámara</p>
               </div>
 
-              <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3">
-                <div className="flex items-center gap-2 text-emerald-300 text-xs font-semibold mb-1">
+              <div className="bg-slate-900/95 border border-slate-800 rounded-xl p-2.5">
+                <div className="flex items-center gap-1.5 text-emerald-300 text-xs font-semibold mb-0.5">
                   <ArrowUp className="w-3.5 h-3.5" />
                   <span>Saltar</span>
                 </div>
-                <p className="text-[11px] text-slate-400">Salta o sube a los techos de los trenes</p>
+                <p className="text-[11px] text-slate-400 leading-snug">Salta o sube a los techos de los trenes</p>
               </div>
 
-              <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3">
-                <div className="flex items-center gap-2 text-amber-300 text-xs font-semibold mb-1">
+              <div className="bg-slate-900/95 border border-slate-800 rounded-xl p-2.5">
+                <div className="flex items-center gap-1.5 text-amber-300 text-xs font-semibold mb-0.5">
                   <ArrowDown className="w-3.5 h-3.5" />
                   <span>Rodar</span>
                 </div>
-                <p className="text-[11px] text-slate-400">Agáchate bajo vigas o rompe escudos térmicos</p>
+                <p className="text-[11px] text-slate-400 leading-snug">Agáchate bajo vigas o rompe escudos térmicos</p>
               </div>
 
-              <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3">
-                <div className="flex items-center gap-2 text-rose-300 text-xs font-semibold mb-1">
+              <div className="bg-slate-900/95 border border-slate-800 rounded-xl p-2.5">
+                <div className="flex items-center gap-1.5 text-rose-300 text-xs font-semibold mb-0.5">
                   <Swords className="w-3.5 h-3.5" />
                   <span>Puños CV · Jefes</span>
                 </div>
-                <p className="text-[11px] text-slate-400">Cada 3 niveles golpea al Jefe lanzando puños (o J)</p>
+                <p className="text-[11px] text-slate-400 leading-snug">Empuja puños al frente o usa K (Izq) y J (Der)</p>
+              </div>
+            </div>
+
+            {/* Compact Special Gesture Combos Preview Strip */}
+            <div className="max-w-2xl w-full bg-slate-900/95 border border-amber-500/30 rounded-xl px-3 py-2 mb-3.5 text-left">
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                  <Zap className="w-3.5 h-3.5" />
+                  Comandos de Gestos Especiales Detectados (CV / K · J)
+                </span>
+                <span className="text-[10px] text-slate-400 font-semibold">
+                  {Object.keys(practicedCombos).length}/{BOXING_COMBOS.length} practicados
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {BOXING_COMBOS.map((combo) => (
+                  <div
+                    key={combo.id}
+                    className="bg-slate-950/90 border border-slate-800 rounded-lg px-2 py-1.5"
+                  >
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <span className="text-[10px] font-bold truncate" style={{ color: combo.color }}>
+                        {combo.name}
+                      </span>
+                      {practicedCombos[combo.id] && (
+                        <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                      )}
+                    </div>
+                    <div className="flex items-center gap-0.5 flex-wrap">
+                      {combo.sequence.map((hand, idx) => (
+                        <React.Fragment key={idx}>
+                          <span
+                            className={`px-1 py-0.5 rounded text-[9px] font-black ${
+                              hand === 'left'
+                                ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-500/40'
+                                : 'bg-orange-500/20 text-orange-200 border border-orange-500/40'
+                            }`}
+                          >
+                            {hand === 'left' ? 'IZQ' : 'DER'}
+                          </span>
+                          {idx < combo.sequence.length - 1 && (
+                            <span className="text-[9px] text-slate-500">→</span>
+                          )}
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -4444,6 +4678,7 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
               )}
 
               <button
+                id="btn-practice-combos"
                 onClick={() => {
                   pausedForComboMenuRef.current = false;
                   setShowComboMenu(true);
@@ -4451,7 +4686,7 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
                 className="flex items-center gap-2 px-5 py-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-sm font-semibold text-amber-300 transition whitespace-nowrap"
               >
                 <BookOpen className="w-4 h-4" />
-                <span>Ver Combos</span>
+                <span>Practicar Gestos y Combos</span>
               </button>
 
               <button
@@ -4552,102 +4787,346 @@ export const SubwayRunnerGame: React.FC<SubwayRunnerGameProps> = ({
           </div>
         )}
 
-        {/* BOXING COMBOS & ARM POWERS MENU MODAL */}
-        {showComboMenu && (
-          <div className="absolute inset-0 z-40 bg-slate-950/95 flex flex-col p-5 sm:p-6 overflow-y-auto">
-            <div className="flex items-center justify-between gap-4 border-b border-slate-800 pb-3 mb-4">
-              <div>
-                <h3 className="font-display text-lg sm:text-xl font-bold text-white">
-                  Poderes de Brazos y Combos de Boxeo
-                </h3>
-                <p className="text-xs text-slate-400">
-                  Combina ambos brazos con tu cámara CV o teclas K / J para destruir obstáculos y cargar Poder Supremo x10.
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  setShowComboMenu(false);
-                  if (pausedForComboMenuRef.current) {
-                    pausedForComboMenuRef.current = false;
-                    togglePause();
-                  }
-                }}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white border border-slate-700 transition shrink-0"
-              >
-                <X className="w-4 h-4" />
-                <span>Cerrar</span>
-              </button>
-            </div>
+        {/* PRE-GAME GESTURE VISUALIZER & INTERACTIVE COMBO PRACTICE ARENA */}
+        {showComboMenu && (() => {
+          const masteredCount = BOXING_COMBOS.filter((c) => practicedCombos[c.id]).length;
+          const comboHint = getNextComboHint(comboSequence);
+          const practicePowerPct = Math.min(100, (powerMeter / POWER_METER_MAX) * 100);
+          return (
+            <div className="absolute inset-0 z-40 bg-slate-950/96 flex flex-col p-4 sm:p-5 overflow-y-auto">
+              {/* Header */}
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3 mb-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Swords className="w-5 h-5 text-amber-400" />
+                    <h3 className="font-display text-lg sm:text-xl font-bold text-white">
+                      Entrenador de Gestos y Combos Especiales
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-[11px] font-bold text-emerald-300">
+                      Dominados: {masteredCount}/{BOXING_COMBOS.length}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Visualiza los gestos de puños CV y practícalos aquí antes de empezar la carrera (Cámara CV, teclas K / J o botones).
+                  </p>
+                </div>
 
-            {/* Arm Powers Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-              {(['left', 'right'] as ArmHand[]).map((handKey) => {
-                const arm = ARM_POWERS[handKey];
-                return (
-                  <div
-                    key={handKey}
-                    className="bg-slate-900 border border-slate-800 rounded-xl p-3.5"
+                <div className="flex items-center gap-2">
+                  {!isCameraActive ? (
+                    <button
+                      onClick={startPoseCamera}
+                      disabled={cameraLoading}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-xs font-semibold text-cyan-300 border border-cyan-500/40 transition"
+                    >
+                      <CameraIcon className="w-3.5 h-3.5" />
+                      <span>{cameraLoading ? 'Conectando...' : 'Activar Cámara CV'}</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={recalibratePose}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-xs font-semibold text-emerald-300 border border-emerald-500/40 transition"
+                    >
+                      <Crosshair className="w-3.5 h-3.5" />
+                      <span>Cámara CV Activa · Recalibrar</span>
+                    </button>
+                  )}
+
+                  {gameState !== 'PLAYING' && (
+                    <button
+                      onClick={startGame}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-amber-500 text-slate-950 font-bold text-xs shadow transition hover:brightness-110"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      <span>Empezar Carrera</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => {
+                      setShowComboMenu(false);
+                      if (pausedForComboMenuRef.current) {
+                        pausedForComboMenuRef.current = false;
+                        togglePause();
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white border border-slate-700 transition shrink-0"
                   >
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="font-display text-sm font-bold" style={{ color: arm.color }}>
-                        {arm.name}
+                    <X className="w-4 h-4" />
+                    <span>Cerrar</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Interactive Live Practice Arena */}
+              <div className="bg-slate-900/95 border border-cyan-500/35 rounded-2xl p-3.5 mb-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-extrabold uppercase tracking-wider text-cyan-300">
+                      Arena de Práctica en Vivo
+                    </span>
+                    {practiceFeedMsg && (
+                      <span className="px-2 py-0.5 rounded-md bg-amber-400/20 border border-amber-400/50 text-[11px] font-bold text-amber-200">
+                        {practiceFeedMsg}
                       </span>
-                      <span className="text-[11px] font-mono-num text-slate-300">
-                        Tecla {arm.keyHint}
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      id="btn-practice-left"
+                      onClick={() => triggerPunch('left')}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/35 border border-cyan-400/60 text-[11px] font-extrabold text-cyan-200 active:scale-95 transition"
+                    >
+                      <Snowflake className="w-3.5 h-3.5" />
+                      <span>Simular Jab IZQ (K)</span>
+                    </button>
+                    <button
+                      id="btn-practice-right"
+                      onClick={() => triggerPunch('right')}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-orange-500/20 hover:bg-orange-500/35 border border-orange-400/60 text-[11px] font-extrabold text-orange-200 active:scale-95 transition"
+                    >
+                      <Flame className="w-3.5 h-3.5" />
+                      <span>Simular Recto DER (J)</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
+                  {/* Live Sequence Slots + Window Timer */}
+                  <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-2.5">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 mb-1.5">
+                      <span>CADENA DETECTADA</span>
+                      <span className="font-mono-num text-cyan-300">
+                        {activeComboName ? `¡${activeComboName}!` : comboWindowPct > 0 ? `${comboWindowPct}%` : 'LISTA'}
                       </span>
                     </div>
-                    <p className="text-[11px] font-semibold text-slate-400 mb-1">
-                      {arm.elementLabel} · {arm.cvHint}
+                    <div className="grid grid-cols-4 gap-1 mb-1.5">
+                      {[0, 1, 2, 3].map((slotIdx) => {
+                        const punchedHand = comboSequence[slotIdx];
+                        const isNextPreview =
+                          !punchedHand &&
+                          slotIdx === comboSequence.length &&
+                          comboHint.nextHand !== null;
+                        return (
+                          <div
+                            key={slotIdx}
+                            className={`h-7 rounded-lg border flex items-center justify-center gap-0.5 text-[10px] font-black transition-all ${
+                              punchedHand === 'left'
+                                ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200'
+                                : punchedHand === 'right'
+                                ? 'bg-orange-500/25 border-orange-400 text-orange-200'
+                                : isNextPreview
+                                ? 'bg-slate-900 border-dashed border-amber-400/60 text-amber-300/80'
+                                : 'bg-slate-900/60 border-slate-800 text-slate-600'
+                            }`}
+                          >
+                            {punchedHand === 'left'
+                              ? 'IZQ'
+                              : punchedHand === 'right'
+                              ? 'DER'
+                              : isNextPreview
+                              ? `+${comboHint.nextHand === 'left' ? 'IZQ' : 'DER'}`
+                              : '·'}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                      <div
+                        className="h-full transition-all duration-75 rounded-full"
+                        style={{
+                          width: `${comboWindowPct}%`,
+                          backgroundColor: comboWindowPct > 45 ? '#22d3ee' : comboWindowPct > 20 ? '#facc15' : '#fb7185',
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Live Fist Extension Detection (Left & Right Arms) */}
+                  <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-2.5 space-y-2">
+                    <div className="text-[10px] font-bold text-slate-400">
+                      EMPUJE DE PUÑO CV EN VIVO
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-cyan-300 w-14">IZQ ❄️</span>
+                      <div className="flex-1 h-2 rounded-full bg-slate-800 overflow-hidden">
+                        <div
+                          className="h-full transition-all duration-75 rounded-full"
+                          style={{
+                            width: `${fistCharge.left}%`,
+                            backgroundColor: fistCharge.left >= 90 ? '#facc15' : '#22d3ee',
+                          }}
+                        />
+                      </div>
+                      <span className="font-mono-num text-[10px] font-bold text-cyan-200 w-8 text-right">
+                        {fistCharge.left}%
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-orange-300 w-14">DER 🔥</span>
+                      <div className="flex-1 h-2 rounded-full bg-slate-800 overflow-hidden">
+                        <div
+                          className="h-full transition-all duration-75 rounded-full"
+                          style={{
+                            width: `${fistCharge.right}%`,
+                            backgroundColor: fistCharge.right >= 90 ? '#facc15' : '#f97316',
+                          }}
+                        />
+                      </div>
+                      <span className="font-mono-num text-[10px] font-bold text-orange-200 w-8 text-right">
+                        {fistCharge.right}%
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Practice Power Bar toward 1,000 Threshold */}
+                  <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-2.5">
+                    <div className="flex items-center justify-between text-[10px] font-bold mb-1.5">
+                      <span className="text-amber-300">UMBRAL x10 (PRÁCTICA)</span>
+                      <span className="font-mono-num text-amber-200">
+                        {powerMeter} / {POWER_METER_MAX}
+                      </span>
+                    </div>
+                    <div className="w-full h-3 rounded-full bg-slate-800 overflow-hidden border border-slate-700 mb-1.5">
+                      <div
+                        className="h-full transition-all duration-100 rounded-full"
+                        style={{
+                          width: `${practicePowerPct}%`,
+                          background: 'linear-gradient(90deg, #0284c7, #06b6d4, #facc15)',
+                        }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400">
+                      Cada combo carga rápido hacia <strong className="text-amber-300">1,000</strong> (Invulnerable + Daño x10).
                     </p>
-                    <p className="text-xs text-slate-200 leading-relaxed">{arm.description}</p>
                   </div>
-                );
-              })}
-            </div>
-
-            {/* Boxing Combos List */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-              {BOXING_COMBOS.map((combo) => (
-                <div
-                  key={combo.id}
-                  className="bg-slate-900 border border-slate-800 rounded-xl p-3.5"
-                >
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="font-display text-sm font-bold" style={{ color: combo.color }}>
-                      {combo.name}
-                    </span>
-                    <span className="font-mono-num text-xs font-bold text-white">
-                      {combo.sequence
-                        .map((s) => (s === 'left' ? 'IZQ (K)' : 'DER (J)'))
-                        .join(' → ')}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 mb-1">
-                    {combo.subtitle}
-                    {combo.breaksObstacles ? ' · Rompe Obstáculos' : ''}
-                    {combo.shattersShield ? ' · Rompe Escudos' : ''}
-                  </p>
-                  <p className="text-xs text-slate-200 leading-relaxed">{combo.description}</p>
                 </div>
-              ))}
-            </div>
-
-            {/* 1,000 Power Bar Overdrive Explanation */}
-            <div className="bg-amber-500/10 border border-amber-400/50 rounded-xl p-3.5">
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="font-display text-sm font-bold text-amber-300">
-                  {OVERDRIVE_CONFIG.title} (Barra a {POWER_METER_MAX})
-                </span>
-                <span className="font-mono-num text-xs font-bold text-amber-200">
-                  {OVERDRIVE_CONFIG.durationSec}s · Daño x{OVERDRIVE_CONFIG.damageMultiplier}
-                </span>
               </div>
-              <p className="text-xs text-amber-100/90 leading-relaxed">
-                {OVERDRIVE_CONFIG.description}
-              </p>
+
+              {/* Gesture Command Visualizer Cards for Each Special Combo */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3.5">
+                {BOXING_COMBOS.map((combo) => {
+                  const isPracticed = Boolean(practicedCombos[combo.id]);
+                  const matchesPrefix =
+                    comboSequence.length > 0 &&
+                    comboSequence.length <= combo.sequence.length &&
+                    comboSequence.every((h, i) => combo.sequence[i] === h);
+                  return (
+                    <div
+                      key={combo.id}
+                      className={`rounded-xl p-3.5 border transition-colors ${
+                        isPracticed
+                          ? 'bg-emerald-950/30 border-emerald-500/60'
+                          : matchesPrefix
+                          ? 'bg-slate-900 border-amber-400/70'
+                          : 'bg-slate-900 border-slate-800'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-display text-sm font-bold" style={{ color: combo.color }}>
+                              {combo.name}
+                            </span>
+                            {isPracticed && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/50 text-[10px] font-bold text-emerald-300">
+                                <CheckCircle2 className="w-3 h-3" />
+                                Practicado
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[11px] text-slate-400">
+                            {combo.subtitle}
+                            {combo.breaksObstacles ? ' · Rompe Obstáculos' : ''}
+                            {combo.shattersShield ? ' · Rompe Escudos' : ''}
+                            {combo.multiLane ? ' · 3 Carriles' : ''}
+                          </span>
+                        </div>
+                        <span className="px-2 py-0.5 rounded-lg bg-slate-950 border border-slate-700 font-mono-num text-[11px] font-bold text-amber-300 shrink-0">
+                          +{combo.powerCharge} ⚡ · {combo.damage} daño
+                        </span>
+                      </div>
+
+                      {/* Step-by-Step Visual Arm Gesture Sequence */}
+                      <div className="flex items-center flex-wrap gap-1.5 bg-slate-950/85 border border-slate-800/90 rounded-lg p-2 mb-2">
+                        {combo.sequence.map((hand, idx) => {
+                          const stepHit = matchesPrefix && idx < comboSequence.length;
+                          const isNextStep = matchesPrefix && idx === comboSequence.length;
+                          return (
+                            <React.Fragment key={idx}>
+                              <div
+                                className={`flex items-center gap-1 px-2 py-1 rounded-md border text-[11px] font-extrabold transition-all ${
+                                  stepHit
+                                    ? 'bg-emerald-500/25 border-emerald-400 text-emerald-200 scale-105'
+                                    : isNextStep
+                                    ? 'bg-amber-500/20 border-amber-400 text-amber-200'
+                                    : hand === 'left'
+                                    ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-200'
+                                    : 'bg-orange-500/15 border-orange-500/40 text-orange-200'
+                                }`}
+                              >
+                                {hand === 'left' ? (
+                                  <Snowflake className="w-3 h-3 shrink-0" />
+                                ) : (
+                                  <Flame className="w-3 h-3 shrink-0" />
+                                )}
+                                <span>
+                                  {hand === 'left' ? 'Puño IZQ (K)' : 'Puño DER (J)'}
+                                </span>
+                              </div>
+                              {idx < combo.sequence.length - 1 && (
+                                <ArrowRight className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
+                      </div>
+
+                      <p className="text-xs text-slate-200 leading-relaxed">{combo.description}</p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Arm Powers & 1,000 Threshold Reference Footer */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {(['left', 'right'] as ArmHand[]).map((handKey) => {
+                  const arm = ARM_POWERS[handKey];
+                  return (
+                    <div
+                      key={handKey}
+                      className="bg-slate-900 border border-slate-800 rounded-xl p-3"
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="font-display text-xs font-bold" style={{ color: arm.color }}>
+                          {arm.name}
+                        </span>
+                        <span className="text-[10px] font-mono-num text-slate-300">
+                          {arm.keyHint}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-snug">{arm.cvHint}</p>
+                    </div>
+                  );
+                })}
+
+                <div className="bg-amber-500/10 border border-amber-400/50 rounded-xl p-3">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="font-display text-xs font-bold text-amber-300">
+                      {OVERDRIVE_CONFIG.title}
+                    </span>
+                    <span className="font-mono-num text-[10px] font-bold text-amber-200">
+                      Umbral {POWER_METER_MAX}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-amber-100/90 leading-snug">
+                    Invulnerable {OVERDRIVE_CONFIG.durationSec}s + Daño x{OVERDRIVE_CONFIG.damageMultiplier} + rompe todo.
+                  </p>
+                </div>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* COINS & CRAFTED ELEMENTS SHOP MODAL ("Taller de Monedas y Elementos Creados") */}
         {showCraftMenu && (
